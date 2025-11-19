@@ -1,0 +1,1415 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>高中化学周期性数据可视化</title>
+  <style>
+    :root {
+      --bg:#0f172a;--panel:#111827;--border:#1f2937;--text:#e5e7eb;--muted:#93a3b3;
+      --accent:#38bdf8;--warn:#f59e0b;--ok:#34d399;
+    }
+    *{box-sizing:border-box}
+    html,body{height:100%;margin:0;background:var(--bg);color:var(--text);font-family:system-ui,-apple-system,"Segoe UI",Roboto,Ubuntu,"Helvetica Neue",Arial}
+    .app{max-width:1200px;margin:0 auto;padding:16px;display:flex;flex-direction:column;gap:12px}
+    .toolbar{display:flex;flex-wrap:wrap;gap:12px;align-items:center;background:var(--panel);border:1px solid var(--border);padding:12px;border-radius:12px}
+    .toolbar .group{display:flex;align-items:center;gap:8px}
+    .toolbar select,.toolbar button,.toolbar input[type="range"]{background:#0b1220;color:var(--text);border:1px solid var(--border);border-radius:8px;padding:8px}
+    .legend{display:flex;align-items:center;gap:12px;margin-left:auto}
+    .legend .bar{width:160px;height:12px;border-radius:8px;background:linear-gradient(90deg,#2b6cb0 0%, #38bdf8 25%, #22c55e 50%, #f59e0b 75%, #ef4444 100%);border:1px solid var(--border)}
+    .content{display:grid;grid-template-columns:1fr 320px;gap:12px}
+    .gridWrap{position:relative;max-height:70vh;overflow:auto;scroll-behavior:smooth;padding-left:28px}
+.ptable{background:var(--panel);border:1px solid var(--border);border-radius:12px;padding:12px}
+.ptable{position:relative}
+.chart-legend-overlay{position:absolute;top:8px;right:8px;display:flex;gap:10px;background:#0b1220;border:1px solid var(--border);border-radius:8px;padding:6px 8px}
+    .groupHeader{display:grid;grid-template-columns:repeat(18,minmax(2.8rem,1fr));gap:6px;margin-bottom:8px;margin-left:28px}
+    .groupHeader .gh{height:1.6rem;display:flex;align-items:center;justify-content:center;color:var(--muted);border:1px solid var(--border);border-radius:8px;background:#0b1220}
+    .grid{display:grid;grid-template-columns:repeat(18,minmax(2.8rem,1fr));grid-auto-rows:minmax(3.6rem,4rem);gap:6px}
+    .cell{position:relative;border:1px solid var(--border);border-radius:10px;display:flex;flex-direction:column;align-items:center;justify-content:center;padding:4px;transition:transform .15s ease, box-shadow .15s ease}
+    .cell:hover{transform:translateY(-2px);box-shadow:0 6px 20px rgba(0,0,0,.3)}
+    .cell.hidden{visibility:hidden}
+    .cell .num{font-size:.75rem;color:var(--muted)}
+    .cell .sym{font-weight:700;font-size:1rem}
+    .cell .name{font-size:.7rem;color:var(--muted)}
+    .cell .mass{font-size:.65rem;color:var(--muted)}
+    /* 冷暖色板下提升文本可读性：统一使用深色字体 */
+    .cell.darkText{color:#111}
+    .cell.darkText .num{color:#111}
+    .cell.darkText .sym{color:#111}
+    .cell.darkText .mass{color:#111}
+    /* 默认/彩虹/火焰色板下提升对比度：统一使用白色字体 */
+    .cell.lightText{color:#fff}
+    .cell.lightText .num{color:#fff}
+    .cell.lightText .sym{color:#fff}
+    .cell.lightText .mass{color:#fff}
+    .cell.empty{opacity:.25}
+    .cell.active{outline:2px solid var(--accent);outline-offset:0}
+    .cell.trend{box-shadow:0 0 0 2px rgba(245,158,11,.6) inset}
+    .footer{margin-top:10px;display:grid;grid-template-columns:repeat(18,minmax(2.8rem,1fr));grid-auto-rows:minmax(3.6rem,4rem);gap:6px}
+    .detail{background:var(--panel);border:1px solid var(--border);border-radius:12px;padding:12px;height:600px;overflow-y:auto}
+    .row-labels{position:absolute;left:6px;top:0;pointer-events:none}
+    .row-labels .rl{position:absolute;left:0;color:var(--muted);background:#0b1220;border:1px solid var(--border);border-radius:8px;padding:2px 6px;font-size:.8rem;transform:translateY(-50%)}
+    .detail .title{font-weight:700;margin-bottom:6px}
+    .detail .kv{display:grid;grid-template-columns:120px 1fr;gap:8px;margin-top:8px}
+    .ec sup{font-size:.85em;line-height:1}
+    .tooltip{position:fixed;pointer-events:none;background:#0b1220;border:1px solid var(--border);border-radius:10px;padding:8px 10px;color:var(--text);font-size:.85rem;box-shadow:0 8px 24px rgba(0,0,0,.35);z-index:50;display:none;max-width:280px}
+    .badge{display:inline-block;padding:2px 6px;border-radius:6px;border:1px solid var(--warn);color:#fbbf24;font-size:.7rem;margin-left:6px}
+    .status{font-size:.8rem;color:var(--muted)}
+    @media (max-width:1100px){.content{grid-template-columns:1fr}}
+    @media (max-width:720px){.grid{grid-template-columns:repeat(18,minmax(2.1rem,1fr));grid-auto-rows:minmax(2.8rem,3rem)}.toolbar{gap:8px}}
+  </style>
+</head>
+<body>
+  <div class="app">
+    <div class="toolbar" id="heatToolbar">
+      <div class="group">
+        <label for="prop">属性</label>
+        <select id="prop">
+          <option value="radius">原子半径 (共价半径, pm)</option>
+          <option value="ionization">第一电离能 (eV)</option>
+          <option value="electronegativity">电负性 (Pauling)</option>
+          <option value="metallicity">金属性 (指数)</option>
+          <option value="nonmetallicity">非金属性 (指数)</option>
+        </select>
+      </div>
+      <div class="group">
+        <label for="trend">趋势</label>
+        <select id="trend">
+          <option value="none">不显示趋势</option>
+          <option value="row_dec">横向递减</option>
+          <option value="col_inc">纵向递增</option>
+          <option value="diag_metal">金属性对角线</option>
+        </select>
+      </div>
+      <div class="group">
+        <button id="play">播放</button>
+        <button id="pause">暂停</button>
+      </div>
+      <div class="group">
+        <label for="speed">播放速率(次/秒)</label>
+        <input id="speed" type="range" min="1" max="30" step="1" value="3" />
+        <span id="speedLabel" class="status">3 次/秒</span>
+      </div>
+      <div class="group">
+        <label for="colorPreset">色板</label>
+        <select id="colorPreset">
+          <option value="default">默认</option>
+          <option value="coolwarm">冷暖</option>
+          <option value="rainbow">彩虹</option>
+          <option value="fire">火焰</option>
+        </select>
+      </div>
+      <div class="group">
+        <label>播放范围</label>
+        <input id="playStart" type="range" min="1" max="118" step="1" value="1" />
+        <input id="playEnd" type="range" min="1" max="118" step="1" value="54" />
+        <span id="playRangeLabel" class="status">Z=1~54</span>
+      </div>
+      <div class="group">
+        <label>轴范围</label>
+        <input id="axisStart" type="range" min="1" max="118" step="1" value="1" />
+        <input id="axisEnd" type="range" min="1" max="118" step="1" value="36" />
+        <span id="axisRangeLabel" class="status">Z=1~36</span>
+      </div>
+      <div class="group">
+        <label><input type="checkbox" id="showFblock" checked> 显示镧系锕系</label>
+      </div>
+      <div class="group">
+        <label><input type="checkbox" id="showSubgroups" checked> 显示副族</label>
+      </div>
+      <div class="group">
+        <label>进度</label>
+        <progress id="progress" max="100" value="0" style="width:160px"></progress>
+        <span id="progressText" class="status">0%</span>
+      </div>
+      <div class="group">
+        <button id="exportCSV">导出CSV</button>
+        <button id="savePNG">保存PNG</button>
+        <button id="saveSVG">保存SVG</button>
+        <button id="exportTrend">导出分析报告</button>
+        <button id="updateClass">更新分类</button>
+        <button id="exportClassCSV">导出分类表</button>
+        <button id="exportClassReport">导出分类报告</button>
+      </div>
+      <div class="legend">
+        <div class="bar" aria-label="热力图图例"></div>
+        <div id="legendText" class="status">低 ←→ 高</div>
+      </div>
+    </div>
+
+    <div class="content">
+      <div class="ptable">
+        <div id="groupHeader" class="groupHeader"></div>
+        <div class="gridWrap">
+          <div id="grid" class="grid" aria-label="元素周期表"></div>
+          <div class="footer" id="footer"></div>
+          <div id="rowLabels" class="row-labels"></div>
+        </div>
+      </div>
+      <div class="detail" id="detail">
+        <div class="title">元素详情</div>
+        <div id="detailBody">
+          <div class="status">点击表格中的元素查看详细信息</div>
+        </div>
+      </div>
+    </div>
+    <div class="toolbar" id="chartToolbar" style="margin-top:12px">
+      <div class="group">
+        <label>曲线参数</label>
+        <label><input type="checkbox" class="series" value="radius" checked> 原子半径(共价半径, x100 pm)</label>
+        <label><input type="checkbox" class="series" value="ionization"> 第一电离能(eV)</label>
+        <label><input type="checkbox" class="series" value="electronegativity"> 电负性</label>
+        <label><input type="checkbox" class="series" value="metallicity"> 金属性</label>
+        <label><input type="checkbox" class="series" value="nonmetallicity"> 非金属性</label>
+      </div>
+      <div class="group">
+        <button id="chartPlay">播放</button>
+        <button id="chartPause">暂停</button>
+      </div>
+      <div class="group">
+        <label for="mode">展示模式</label>
+        <select id="mode">
+          <option value="line">平滑曲线</option>
+          <option value="scatter">散点图</option>
+        </select>
+      </div>
+      <div class="group">
+        <span id="updateStatus" class="status">数据流：运行 · 60 FPS · 错误 0</span>
+      </div>
+      <div class="legend" id="chartLegend" style="margin-left:0"></div>
+    </div>
+    <div class="ptable" id="chartPanel" style="padding:16px">
+      <canvas id="chart" width="1000" height="340" aria-label="元素属性曲线图"></canvas>
+      <div class="status" id="axisLabel">横轴：原子序数(Z) · 纵轴：依据选择的参数</div>
+      <div id="chartError" class="status" style="color:#f87171;display:none">可视化错误：请查看控制台日志</div>
+      <div id="chartLegendOverlay" class="chart-legend-overlay"></div>
+    </div>
+  </div>
+
+  <div id="tooltip" class="tooltip"></div>
+
+  <script>
+    const eV_to_kJmol = 96.485;
+    const explanation = {
+      radius: "原子半径反映原子大小，横向随核电荷数增大而减小，纵向因电子层数增大而增大。",
+      ionization: "第一电离能为移走最外层一个电子所需能量，单位 eV；通常横向递增、纵向递减，受电子排布与成对效应影响存在异常。",
+      electronegativity: "Pauling 电负性表示成键时吸引电子能力，通常横向增大、纵向减小，与有效核电荷和原子半径相关。",
+      metallicity: "金属性指数为教学用综合指标，结合半径大、电离能低、电负性低的特征，用于直观呈现金属性的对角线趋势。",
+      nonmetallicity: "非金属性指数与金属性互补，定义为 1−金属性，用于对角线反趋势呈现。"
+    };
+
+    const anomalies = {
+      B: "B 的第一电离能相较邻近元素呈异常，源于轨道能级与电子排布。",
+      Be: "Be 的第一电离能偏高，与稳定的 2s 电子构型有关。",
+      O: "O 相对 N 的第一电离能更低，因 p 轨道电子成对产生的电子-电子排斥。",
+      He: "稀有气体的共价半径定义依赖实验与环境，数值存在不确定性。",
+      Ne: "稀有气体的共价半径定义依赖实验与环境，数值存在不确定性。",
+      Ar: "稀有气体的共价半径定义依赖实验与环境，数值存在不确定性。"
+    };
+
+    const baseData = [
+      {Z:1,symbol:"H",name:"氢",period:1,group:1,radius_pm:31,ionization_eV:13.5984,en_Pauling:2.20,atomic_mass:1.008,electron_configuration:"1s1",groupBlock:"非金属"},
+      {Z:2,symbol:"He",name:"氦",period:1,group:18,radius_pm:28,ionization_eV:24.5874,en_Pauling:null,atomic_mass:4.002602,electron_configuration:"1s2",groupBlock:"稀有气体"},
+      {Z:3,symbol:"Li",name:"锂",period:2,group:1,radius_pm:128,ionization_eV:5.3917,en_Pauling:0.98,atomic_mass:6.94,electron_configuration:"[He] 2s1",groupBlock:"碱金属"},
+      {Z:4,symbol:"Be",name:"铍",period:2,group:2,radius_pm:96,ionization_eV:9.3227,en_Pauling:1.57,atomic_mass:9.0121831,electron_configuration:"[He] 2s2",groupBlock:"碱土金属"},
+      {Z:5,symbol:"B",name:"硼",period:2,group:13,radius_pm:84,ionization_eV:8.298,en_Pauling:2.04,atomic_mass:10.81,electron_configuration:"[He] 2s2 2p1",groupBlock:"类金属"},
+      {Z:6,symbol:"C",name:"碳",period:2,group:14,radius_pm:76,ionization_eV:11.2603,en_Pauling:2.55,atomic_mass:12.011,electron_configuration:"[He] 2s2 2p2",groupBlock:"非金属"},
+      {Z:7,symbol:"N",name:"氮",period:2,group:15,radius_pm:71,ionization_eV:14.5341,en_Pauling:3.04,atomic_mass:14.007,electron_configuration:"[He] 2s2 2p3",groupBlock:"非金属"},
+      {Z:8,symbol:"O",name:"氧",period:2,group:16,radius_pm:66,ionization_eV:13.6181,en_Pauling:3.44,atomic_mass:15.999,electron_configuration:"[He] 2s2 2p4",groupBlock:"非金属"},
+      {Z:9,symbol:"F",name:"氟",period:2,group:17,radius_pm:57,ionization_eV:17.4228,en_Pauling:3.98,atomic_mass:18.998403163,electron_configuration:"[He] 2s2 2p5",groupBlock:"卤素"},
+      {Z:10,symbol:"Ne",name:"氖",period:2,group:18,radius_pm:58,ionization_eV:21.5645,en_Pauling:null,atomic_mass:20.1797,electron_configuration:"[He] 2s2 2p6",groupBlock:"稀有气体"},
+      {Z:11,symbol:"Na",name:"钠",period:3,group:1,radius_pm:166,ionization_eV:5.1391,en_Pauling:0.93,atomic_mass:22.98976928,electron_configuration:"[Ne] 3s1",groupBlock:"碱金属"},
+      {Z:12,symbol:"Mg",name:"镁",period:3,group:2,radius_pm:141,ionization_eV:7.6462,en_Pauling:1.31,atomic_mass:24.305,electron_configuration:"[Ne] 3s2",groupBlock:"碱土金属"},
+      {Z:13,symbol:"Al",name:"铝",period:3,group:13,radius_pm:121,ionization_eV:5.9858,en_Pauling:1.61,atomic_mass:26.9815385,electron_configuration:"[Ne] 3s2 3p1",groupBlock:"金属"},
+      {Z:14,symbol:"Si",name:"硅",period:3,group:14,radius_pm:111,ionization_eV:8.1517,en_Pauling:1.90,atomic_mass:28.085,electron_configuration:"[Ne] 3s2 3p2",groupBlock:"类金属"},
+      {Z:15,symbol:"P",name:"磷",period:3,group:15,radius_pm:107,ionization_eV:10.486,en_Pauling:2.19,atomic_mass:30.973761998,electron_configuration:"[Ne] 3s2 3p3",groupBlock:"非金属"},
+      {Z:16,symbol:"S",name:"硫",period:3,group:16,radius_pm:105,ionization_eV:10.36,en_Pauling:2.58,atomic_mass:32.06,electron_configuration:"[Ne] 3s2 3p4",groupBlock:"非金属"},
+      {Z:17,symbol:"Cl",name:"氯",period:3,group:17,radius_pm:102,ionization_eV:12.9676,en_Pauling:3.16,atomic_mass:35.45,electron_configuration:"[Ne] 3s2 3p5",groupBlock:"卤素"},
+      {Z:18,symbol:"Ar",name:"氩",period:3,group:18,radius_pm:106,ionization_eV:15.7596,en_Pauling:null,atomic_mass:39.948,electron_configuration:"[Ne] 3s2 3p6",groupBlock:"稀有气体"}
+    ];
+    const SYMBOLS = ["H","He","Li","Be","B","C","N","O","F","Ne","Na","Mg","Al","Si","P","S","Cl","Ar","K","Ca","Sc","Ti","V","Cr","Mn","Fe","Co","Ni","Cu","Zn","Ga","Ge","As","Se","Br","Kr","Rb","Sr","Y","Zr","Nb","Mo","Tc","Ru","Rh","Pd","Ag","Cd","In","Sn","Sb","Te","I","Xe","Cs","Ba","La","Ce","Pr","Nd","Pm","Sm","Eu","Gd","Tb","Dy","Ho","Er","Tm","Yb","Lu","Hf","Ta","W","Re","Os","Ir","Pt","Au","Hg","Tl","Pb","Bi","Po","At","Rn","Fr","Ra","Ac","Th","Pa","U","Np","Pu","Am","Cm","Bk","Cf","Es","Fm","Md","No","Lr","Rf","Db","Sg","Bh","Hs","Mt","Ds","Rg","Cn","Nh","Fl","Mc","Lv","Ts","Og"];
+    const NAMES = SYMBOLS.map(s=>s);
+    const NameZH = {
+      H:"氢",He:"氦",Li:"锂",Be:"铍",B:"硼",C:"碳",N:"氮",O:"氧",F:"氟",Ne:"氖",
+      Na:"钠",Mg:"镁",Al:"铝",Si:"硅",P:"磷",S:"硫",Cl:"氯",Ar:"氩",
+      K:"钾",Ca:"钙",Sc:"钪",Ti:"钛",V:"钒",Cr:"铬",Mn:"锰",Fe:"铁",Co:"钴",Ni:"镍",Cu:"铜",Zn:"锌",
+      Ga:"镓",Ge:"锗",As:"砷",Se:"硒",Br:"溴",Kr:"氪",
+      Rb:"铷",Sr:"锶",Y:"钇",Zr:"锆",Nb:"铌",Mo:"钼",Tc:"锝",Ru:"釕",Rh:"铑",Pd:"钯",Ag:"银",Cd:"镉",
+      In:"铟",Sn:"锡",Sb:"锑",Te:"碲",I:"碘",Xe:"氙",
+      Cs:"铯",Ba:"钡",La:"镧",Ce:"铈",Pr:"镨",Nd:"钕",Pm:"钷",Sm:"钐",Eu:"铕",Gd:"钆",Tb:"铽",Dy:"镝",Ho:"钬",Er:"铒",Tm:"铥",Yb:"镱",Lu:"镥",
+      Hf:"铪",Ta:"钽",W:"钨",Re:"铼",Os:"锇",Ir:"铱",Pt:"铂",Au:"金",Hg:"汞",Tl:"铊",Pb:"铅",Bi:"铋",Po:"钋",At:"砹",Rn:"氡",
+      Fr:"钫",Ra:"镭",Ac:"锕",Th:"钍",Pa:"镤",U:"铀",Np:"镎",Pu:"钚",Am:"镅",Cm:"锔",Bk:"锫",Cf:"锎",Es:"锿",Fm:"镄",Md:"钔",No:"锘",Lr:"铹"
+    };
+    function localName(e){ return (e && NameZH[e.symbol]) || e.name || e.symbol; }
+    window.setNameZH = function(map){ if(map && typeof map === 'object'){ Object.assign(NameZH, map); renderGrid(); }}
+    // 周期中文映射与族罗马数字映射：仅用于前端显示
+    function periodToCN(n){ const map={1:"一",2:"二",3:"三",4:"四",5:"五",6:"六",7:"七"}; return map[n]||String(n||""); }
+    function groupToRoman(g){ if(g==null) return "—"; const main={1:"IA",2:"IIA",13:"IIIA",14:"IVA",15:"VA",16:"VIA",17:"VIIA",18:"0"}; const sub={3:"IIIB",4:"IVB",5:"VB",6:"VIB",7:"VIIB",8:"VIII",9:"VIII",10:"VIII",11:"IB",12:"IIB"}; return main[g]||sub[g]||String(g); }
+    function assignPositions(){
+      const pos = new Map();
+      // Period 1
+      pos.set(1,{period:1,group:1}); pos.set(2,{period:1,group:18});
+      // Period 2 (Z=3..10)
+      [1,2,13,14,15,16,17,18].forEach((g,idx)=>{pos.set(3+idx,{period:2,group:g});});
+      // Period 3 (Z=11..18)
+      [1,2,13,14,15,16,17,18].forEach((g,idx)=>{pos.set(11+idx,{period:3,group:g});});
+      // Period 4 (Z=19..36)
+      [1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16,17,18].forEach((g,idx)=>{pos.set(19+idx,{period:4,group:g});});
+      // Period 5 (Z=37..54)
+      [1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16,17,18].forEach((g,idx)=>{pos.set(37+idx,{period:5,group:g});});
+      // Period 6 main (Z=55..56, 57=La, 72..86)
+      pos.set(55,{period:6,group:1}); pos.set(56,{period:6,group:2}); pos.set(57,{period:6,group:3});
+      [4,5,6,7,8,9,10,11,12,13,14,15,16,17,18].forEach((g,idx)=>{pos.set(72+idx,{period:6,group:g});});
+      // Period 7 main (Z=87..88, 89=Ac, 104..118)
+      pos.set(87,{period:7,group:1}); pos.set(88,{period:7,group:2}); pos.set(89,{period:7,group:3});
+      [4,5,6,7,8,9,10,11,12,13,14,15,16,17,18].forEach((g,idx)=>{pos.set(104+idx,{period:7,group:g});});
+      return pos;
+    }
+    const POS = assignPositions();
+    const moreData = [
+      {Z:19,radius_pm:203,ionization_eV:4.3407,en_Pauling:0.82,atomic_mass:39.0983,electron_configuration:"[Ar] 4s1"},
+      {Z:20,radius_pm:176,ionization_eV:6.1132,en_Pauling:1.00,atomic_mass:40.078,electron_configuration:"[Ar] 4s2"},
+      {Z:21,radius_pm:170,ionization_eV:6.5615,en_Pauling:1.36,atomic_mass:44.955908,electron_configuration:"[Ar] 3d1 4s2"},
+      {Z:22,radius_pm:160,ionization_eV:6.8281,en_Pauling:1.54,atomic_mass:47.867,electron_configuration:"[Ar] 3d2 4s2"},
+      {Z:23,radius_pm:153,ionization_eV:6.7460,en_Pauling:1.63,atomic_mass:50.9415,electron_configuration:"[Ar] 3d3 4s2"},
+      {Z:24,radius_pm:139,ionization_eV:6.7665,en_Pauling:1.66,atomic_mass:51.9961,electron_configuration:"[Ar] 3d5 4s1"},
+      {Z:25,radius_pm:139,ionization_eV:7.4340,en_Pauling:1.55,atomic_mass:54.938044,electron_configuration:"[Ar] 3d5 4s2"},
+      {Z:26,radius_pm:132,ionization_eV:7.9024,en_Pauling:1.83,atomic_mass:55.845,electron_configuration:"[Ar] 3d6 4s2"},
+      {Z:27,radius_pm:126,ionization_eV:7.8810,en_Pauling:1.88,atomic_mass:58.933194,electron_configuration:"[Ar] 3d7 4s2"},
+      {Z:28,radius_pm:124,ionization_eV:7.6398,en_Pauling:1.91,atomic_mass:58.6934,electron_configuration:"[Ar] 3d8 4s2"},
+      {Z:29,radius_pm:132,ionization_eV:7.7264,en_Pauling:1.90,atomic_mass:63.546,electron_configuration:"[Ar] 3d10 4s1"},
+      {Z:30,radius_pm:122,ionization_eV:9.3942,en_Pauling:1.65,atomic_mass:65.38,electron_configuration:"[Ar] 3d10 4s2"},
+      {Z:31,radius_pm:122,ionization_eV:5.9993,en_Pauling:1.81,atomic_mass:69.723,electron_configuration:"[Ar] 3d10 4s2 4p1"},
+      {Z:32,radius_pm:120,ionization_eV:7.8994,en_Pauling:2.01,atomic_mass:72.630,electron_configuration:"[Ar] 3d10 4s2 4p2"},
+      {Z:33,radius_pm:119,ionization_eV:9.7886,en_Pauling:2.18,atomic_mass:74.921595,electron_configuration:"[Ar] 3d10 4s2 4p3"},
+      {Z:34,radius_pm:120,ionization_eV:9.7524,en_Pauling:2.55,atomic_mass:78.971,electron_configuration:"[Ar] 3d10 4s2 4p4"},
+      {Z:35,radius_pm:120,ionization_eV:11.8138,en_Pauling:2.96,atomic_mass:79.904,electron_configuration:"[Ar] 3d10 4s2 4p5"},
+      {Z:36,radius_pm:116,ionization_eV:13.9996,en_Pauling:null,atomic_mass:83.798,electron_configuration:"[Ar] 3d10 4s2 4p6"},
+      {Z:37,atomic_mass:85.468,electron_configuration:"[Kr] 5s1"},
+      {Z:38,atomic_mass:87.62,electron_configuration:"[Kr] 5s2"},
+      {Z:39,atomic_mass:88.90584,electron_configuration:"[Kr] 4d1 5s2"},
+      {Z:40,atomic_mass:91.224,electron_configuration:"[Kr] 4d2 5s2"},
+      {Z:41,atomic_mass:92.90637,electron_configuration:"[Kr] 4d4 5s1"},
+      {Z:42,atomic_mass:95.95,electron_configuration:"[Kr] 4d5 5s1"},
+      {Z:43,atomic_mass:98.0,electron_configuration:"[Kr] 4d5 5s2"},
+      {Z:44,atomic_mass:101.07,electron_configuration:"[Kr] 4d7 5s1"},
+      {Z:45,atomic_mass:102.9055,electron_configuration:"[Kr] 4d8 5s1"},
+      {Z:46,atomic_mass:106.42,electron_configuration:"[Kr] 4d10"},
+      {Z:47,atomic_mass:107.8682,electron_configuration:"[Kr] 4d10 5s1"},
+      {Z:48,atomic_mass:112.414,electron_configuration:"[Kr] 4d10 5s2"},
+      {Z:49,atomic_mass:114.818,electron_configuration:"[Kr] 4d10 5s2 5p1"},
+      {Z:50,atomic_mass:118.710,electron_configuration:"[Kr] 4d10 5s2 5p2"},
+      {Z:51,atomic_mass:121.760,electron_configuration:"[Kr] 4d10 5s2 5p3"},
+      {Z:52,atomic_mass:127.60,electron_configuration:"[Kr] 4d10 5s2 5p4"},
+      {Z:53,atomic_mass:126.90447,electron_configuration:"[Kr] 4d10 5s2 5p5"},
+      {Z:54,atomic_mass:131.293,electron_configuration:"[Kr] 4d10 5s2 5p6"},
+      {Z:55,atomic_mass:132.90545,electron_configuration:"[Xe] 6s1"},
+      {Z:56,atomic_mass:137.327,electron_configuration:"[Xe] 6s2"},
+      {Z:57,atomic_mass:138.90547,electron_configuration:"[Xe] 5d1 6s2"},
+      {Z:58,atomic_mass:140.116,electron_configuration:"[Xe] 4f1 5d1 6s2"},
+      {Z:59,atomic_mass:140.90766,electron_configuration:"[Xe] 4f3 6s2"},
+      {Z:60,atomic_mass:144.242,electron_configuration:"[Xe] 4f4 6s2"},
+      {Z:61,atomic_mass:145.0,electron_configuration:"[Xe] 4f5 6s2"},
+      {Z:62,atomic_mass:150.36,electron_configuration:"[Xe] 4f6 6s2"},
+      {Z:63,atomic_mass:151.964,electron_configuration:"[Xe] 4f7 6s2"},
+      {Z:64,atomic_mass:157.25,electron_configuration:"[Xe] 4f7 5d1 6s2"},
+      {Z:65,atomic_mass:158.92535,electron_configuration:"[Xe] 4f9 6s2"},
+      {Z:66,atomic_mass:162.5,electron_configuration:"[Xe] 4f10 6s2"},
+      {Z:67,atomic_mass:164.93033,electron_configuration:"[Xe] 4f11 6s2"},
+      {Z:68,atomic_mass:167.259,electron_configuration:"[Xe] 4f12 6s2"},
+      {Z:69,atomic_mass:168.93422,electron_configuration:"[Xe] 4f13 6s2"},
+      {Z:70,atomic_mass:173.045,electron_configuration:"[Xe] 4f14 6s2"},
+      {Z:71,atomic_mass:174.9668,electron_configuration:"[Xe] 4f14 5d1 6s2"},
+      {Z:72,atomic_mass:178.49,electron_configuration:"[Xe] 4f14 5d2 6s2"},
+      {Z:73,atomic_mass:180.94788,electron_configuration:"[Xe] 4f14 5d3 6s2"},
+      {Z:74,atomic_mass:183.84,electron_configuration:"[Xe] 4f14 5d4 6s2"},
+      {Z:75,atomic_mass:186.207,electron_configuration:"[Xe] 4f14 5d5 6s2"},
+      {Z:76,atomic_mass:190.23,electron_configuration:"[Xe] 4f14 5d6 6s2"},
+      {Z:77,atomic_mass:192.217,electron_configuration:"[Xe] 4f14 5d7 6s2"},
+      {Z:78,atomic_mass:195.084,electron_configuration:"[Xe] 4f14 5d9 6s1"},
+      {Z:79,atomic_mass:196.96657,electron_configuration:"[Xe] 4f14 5d10 6s1"},
+      {Z:80,atomic_mass:200.592,electron_configuration:"[Xe] 4f14 5d10 6s2"},
+      {Z:81,atomic_mass:204.38,electron_configuration:"[Xe] 4f14 5d10 6s2 6p1"},
+      {Z:82,atomic_mass:207.2,electron_configuration:"[Xe] 4f14 5d10 6s2 6p2"},
+      {Z:83,atomic_mass:208.9804,electron_configuration:"[Xe] 4f14 5d10 6s2 6p3"},
+      {Z:84,atomic_mass:209.0,electron_configuration:"[Xe] 4f14 5d10 6s2 6p4"},
+      {Z:85,atomic_mass:210.0,electron_configuration:"[Xe] 4f14 5d10 6s2 6p5"},
+      {Z:86,atomic_mass:222.0,electron_configuration:"[Xe] 4f14 5d10 6s2 6p6"},
+      {Z:87,atomic_mass:223.0,electron_configuration:"[Rn] 7s1"},
+      {Z:88,atomic_mass:226.0,electron_configuration:"[Rn] 7s2"},
+      {Z:89,atomic_mass:227.0,electron_configuration:"[Rn] 6d1 7s2"},
+      {Z:90,atomic_mass:232.0377,electron_configuration:"[Rn] 6d2 7s2"},
+      {Z:91,atomic_mass:231.03588,electron_configuration:"[Rn] 5f2 6d1 7s2"},
+      {Z:92,atomic_mass:238.02891,electron_configuration:"[Rn] 5f3 6d1 7s2"},
+      {Z:93,atomic_mass:237.0,electron_configuration:"[Rn] 5f4 6d1 7s2"},
+      {Z:94,atomic_mass:244.0,electron_configuration:"[Rn] 5f6 7s2"},
+      {Z:95,atomic_mass:243.0,electron_configuration:"[Rn] 5f7 7s2"},
+      {Z:96,atomic_mass:247.0,electron_configuration:"[Rn] 5f7 6d1 7s2"},
+      {Z:97,atomic_mass:247.0,electron_configuration:"[Rn] 5f9 7s2"},
+      {Z:98,atomic_mass:251.0,electron_configuration:"[Rn] 5f10 7s2"},
+      {Z:99,atomic_mass:252.0,electron_configuration:"[Rn] 5f11 7s2"},
+      {Z:100,atomic_mass:257.0,electron_configuration:"[Rn] 5f12 7s2"},
+      {Z:101,atomic_mass:258.0,electron_configuration:"[Rn] 5f13 7s2"},
+      {Z:102,atomic_mass:259.0,electron_configuration:"[Rn] 5f14 7s2"},
+      {Z:103,atomic_mass:266.0,electron_configuration:"[Rn] 5f14 7s2 7p1"},
+      {Z:104,atomic_mass:267.0,electron_configuration:"[Rn] 5f14 6d2 7s2"},
+      {Z:105,atomic_mass:268.0,electron_configuration:"[Rn] 5f14 6d3 7s2"},
+      {Z:106,atomic_mass:269.0,electron_configuration:"[Rn] 5f14 6d4 7s2"},
+      {Z:107,atomic_mass:270.0,electron_configuration:"[Rn] 5f14 6d5 7s2"},
+      {Z:108,atomic_mass:270.0,electron_configuration:"[Rn] 5f14 6d6 7s2"},
+      {Z:109,atomic_mass:278.0,electron_configuration:"[Rn] 5f14 6d7 7s2"},
+      {Z:110,atomic_mass:281.0,electron_configuration:"[Rn] 5f14 6d8 7s2"},
+      {Z:111,atomic_mass:282.0,electron_configuration:"[Rn] 5f14 6d9 7s2"},
+      {Z:112,atomic_mass:285.0,electron_configuration:"[Rn] 5f14 6d10 7s2"},
+      {Z:113,atomic_mass:286.0,electron_configuration:"[Rn] 5f14 6d10 7s2 7p1"},
+      {Z:114,atomic_mass:289.0,electron_configuration:"[Rn] 5f14 6d10 7s2 7p2"},
+      {Z:115,atomic_mass:290.0,electron_configuration:"[Rn] 5f14 6d10 7s2 7p3"},
+      {Z:116,atomic_mass:293.0,electron_configuration:"[Rn] 5f14 6d10 7s2 7p4"},
+      {Z:117,atomic_mass:294.0,electron_configuration:"[Rn] 5f14 6d10 7s2 7p5"},
+      {Z:118,atomic_mass:294.0,electron_configuration:"[Rn] 5f14 6d10 7s2 7p6"}
+    ];
+    const moreAttrs = [
+      {Z:37,radius_pm:215,ionization_eV:4.1771,en_Pauling:0.82,melting_K:312.46,boiling_K:961.0,discovery_year:1861},
+      {Z:38,radius_pm:190,ionization_eV:5.6955,en_Pauling:0.95,melting_K:1050.0,boiling_K:1655.0,discovery_year:1790},
+      {Z:39,radius_pm:180,ionization_eV:6.2173,en_Pauling:1.22,melting_K:1799.0,boiling_K:3609.0,discovery_year:1794},
+      {Z:40,radius_pm:155,ionization_eV:6.6339,en_Pauling:1.33,melting_K:2128.0,boiling_K:4682.0,discovery_year:1789},
+      {Z:41,radius_pm:145,ionization_eV:6.7589,en_Pauling:1.60,melting_K:2741.0,boiling_K:5017.0,discovery_year:1801},
+      {Z:42,radius_pm:145,ionization_eV:7.0924,en_Pauling:2.16,melting_K:2896.0,boiling_K:4912.0,discovery_year:1778},
+      {Z:43,radius_pm:135,ionization_eV:7.2800,en_Pauling:1.90,melting_K:2430.0,boiling_K:4538.0,discovery_year:1937},
+      {Z:44,radius_pm:130,ionization_eV:7.3610,en_Pauling:2.20,melting_K:2607.0,boiling_K:4423.0,discovery_year:1844},
+      {Z:45,radius_pm:135,ionization_eV:7.4589,en_Pauling:2.28,melting_K:2237.0,boiling_K:3968.0,discovery_year:1803},
+      {Z:46,radius_pm:139,ionization_eV:8.3369,en_Pauling:2.20,melting_K:1828.0,boiling_K:3236.0,discovery_year:1803},
+      {Z:47,radius_pm:160,ionization_eV:7.5762,en_Pauling:1.93,melting_K:1234.0,boiling_K:2435.0,discovery_year:null},
+      {Z:48,radius_pm:155,ionization_eV:8.9938,en_Pauling:1.69,melting_K:594.22,boiling_K:1040.0,discovery_year:1817},
+      {Z:49,radius_pm:155,ionization_eV:5.7864,en_Pauling:1.78,melting_K:429.75,boiling_K:2345.0,discovery_year:1863},
+      {Z:50,radius_pm:145,ionization_eV:7.3439,en_Pauling:1.96,melting_K:505.08,boiling_K:2875.0,discovery_year:null},
+      {Z:51,radius_pm:145,ionization_eV:8.6400,en_Pauling:2.05,melting_K:903.78,boiling_K:1860.0,discovery_year:null},
+      {Z:52,radius_pm:140,ionization_eV:9.0000,en_Pauling:2.10,melting_K:722.66,boiling_K:1261.0,discovery_year:1782},
+      {Z:53,radius_pm:140,ionization_eV:10.4513,en_Pauling:2.66,melting_K:386.85,boiling_K:457.4,discovery_year:1811},
+      {Z:54,radius_pm:140,ionization_eV:12.1298,en_Pauling:null,melting_K:161.36,boiling_K:165.03,discovery_year:1898}
+    ];
+    const BD = new Map(baseData.map(e=>[e.Z,e]));
+    const MD = new Map(moreData.map(e=>[e.Z,e]));
+    const MA = new Map(moreAttrs.map(e=>[e.Z,e]));
+    const moreAttrs2 = [
+      {Z:55,radius_pm:232,ionization_eV:3.8939,en_Pauling:0.79,melting_K:301.59,boiling_K:944.0,discovery_year:1860},
+      {Z:56,radius_pm:198,ionization_eV:5.2117,en_Pauling:0.89,melting_K:1000.0,boiling_K:2170.0,discovery_year:1808},
+      {Z:57,radius_pm:187,ionization_eV:5.5769,en_Pauling:1.10,melting_K:1193.0,boiling_K:3737.0,discovery_year:1839},
+      {Z:58,radius_pm:182,ionization_eV:5.5387,en_Pauling:1.12,melting_K:1068.0,boiling_K:3633.0,discovery_year:1803},
+      {Z:59,radius_pm:182,ionization_eV:5.4730,en_Pauling:1.13,melting_K:1208.0,boiling_K:3793.0,discovery_year:1885},
+      {Z:60,radius_pm:181,ionization_eV:5.5250,en_Pauling:1.14,melting_K:1297.0,boiling_K:3347.0,discovery_year:1885},
+      {Z:61,radius_pm:181,ionization_eV:5.5500,en_Pauling:1.13,melting_K:1315.0,boiling_K:3273.0,discovery_year:1945},
+      {Z:62,radius_pm:180,ionization_eV:5.6430,en_Pauling:1.17,melting_K:1345.0,boiling_K:2067.0,discovery_year:1879},
+      {Z:63,radius_pm:199,ionization_eV:5.6700,en_Pauling:1.20,melting_K:1099.0,boiling_K:1802.0,discovery_year:1901},
+      {Z:64,radius_pm:180,ionization_eV:6.1500,en_Pauling:1.20,melting_K:1585.0,boiling_K:3546.0,discovery_year:1880},
+      {Z:65,radius_pm:180,ionization_eV:5.8600,en_Pauling:1.20,melting_K:1630.0,boiling_K:3227.0,discovery_year:1843},
+      {Z:66,radius_pm:180,ionization_eV:5.9300,en_Pauling:1.22,melting_K:1680.0,boiling_K:2840.0,discovery_year:1886},
+      {Z:67,radius_pm:176,ionization_eV:6.0200,en_Pauling:1.23,melting_K:1734.0,boiling_K:2993.0,discovery_year:1867},
+      {Z:68,radius_pm:176,ionization_eV:6.1100,en_Pauling:1.24,melting_K:1802.0,boiling_K:3141.0,discovery_year:1843},
+      {Z:69,radius_pm:175,ionization_eV:6.1840,en_Pauling:1.25,melting_K:1818.0,boiling_K:2223.0,discovery_year:1879},
+      {Z:70,radius_pm:194,ionization_eV:6.2540,en_Pauling:1.10,melting_K:1097.0,boiling_K:1469.0,discovery_year:1878},
+      {Z:71,radius_pm:171,ionization_eV:5.4250,en_Pauling:1.27,melting_K:1925.0,boiling_K:3675.0,discovery_year:1907},
+      {Z:72,radius_pm:164,ionization_eV:6.8250,en_Pauling:1.30,melting_K:2506.0,boiling_K:4876.0,discovery_year:1923},
+      {Z:73,radius_pm:146,ionization_eV:7.5490,en_Pauling:1.50,melting_K:3290.0,boiling_K:5731.0,discovery_year:1802},
+      {Z:74,radius_pm:139,ionization_eV:7.8640,en_Pauling:2.36,melting_K:3695.0,boiling_K:5828.0,discovery_year:1783},
+      {Z:75,radius_pm:137,ionization_eV:7.8330,en_Pauling:1.90,melting_K:3459.0,boiling_K:5869.0,discovery_year:1925},
+      {Z:76,radius_pm:135,ionization_eV:8.4380,en_Pauling:2.20,melting_K:3306.0,boiling_K:5285.0,discovery_year:1803},
+      {Z:77,radius_pm:136,ionization_eV:9.1000,en_Pauling:2.20,melting_K:2719.0,boiling_K:4701.0,discovery_year:1803},
+      {Z:78,radius_pm:139,ionization_eV:8.9580,en_Pauling:2.28,melting_K:2041.0,boiling_K:4098.0,discovery_year:1735},
+      {Z:79,radius_pm:144,ionization_eV:9.2250,en_Pauling:2.54,melting_K:1337.0,boiling_K:3129.0,discovery_year:null},
+      {Z:80,radius_pm:132,ionization_eV:10.4370,en_Pauling:2.00,melting_K:234.43,boiling_K:629.88,discovery_year:null},
+      {Z:81,radius_pm:148,ionization_eV:6.1080,en_Pauling:1.62,melting_K:577.0,boiling_K:1746.0,discovery_year:1861},
+      {Z:82,radius_pm:146,ionization_eV:7.4167,en_Pauling:2.33,melting_K:600.61,boiling_K:2022.0,discovery_year:null},
+      {Z:83,radius_pm:148,ionization_eV:7.2850,en_Pauling:2.02,melting_K:544.70,boiling_K:1837.0,discovery_year:null},
+      {Z:84,radius_pm:135,ionization_eV:8.4170,en_Pauling:2.00,melting_K:527.0,boiling_K:1235.0,discovery_year:1898},
+      {Z:85,radius_pm:127,ionization_eV:9.3170,en_Pauling:2.20,melting_K:575.0,boiling_K:610.0,discovery_year:1940},
+      {Z:86,radius_pm:120,ionization_eV:10.7480,en_Pauling:null,melting_K:202.0,boiling_K:211.30,discovery_year:1900}
+    ];
+    const MA2 = new Map(moreAttrs2.map(e=>[e.Z,e]));
+    const moreAttrs3 = [
+      {Z:87,radius_pm:260,ionization_eV:4.0727,en_Pauling:0.70,melting_K:300.0,boiling_K:950.0,discovery_year:1939},
+      {Z:88,radius_pm:215,ionization_eV:5.2784,en_Pauling:0.90,melting_K:973.0,boiling_K:2010.0,discovery_year:1898},
+      {Z:89,radius_pm:188,ionization_eV:5.1706,en_Pauling:1.10,melting_K:1323.0,boiling_K:3473.0,discovery_year:1899},
+      {Z:90,radius_pm:180,ionization_eV:6.3067,en_Pauling:1.30,melting_K:2023.0,boiling_K:5061.0,discovery_year:1828},
+      {Z:91,radius_pm:180,ionization_eV:5.8900,en_Pauling:1.50,melting_K:1841.0,boiling_K:4300.0,discovery_year:1917},
+      {Z:92,radius_pm:175,ionization_eV:6.1941,en_Pauling:1.38,melting_K:1408.0,boiling_K:4404.0,discovery_year:1789},
+      {Z:93,radius_pm:175,ionization_eV:6.2657,en_Pauling:1.36,melting_K:913.0,boiling_K:4273.0,discovery_year:1940},
+      {Z:94,radius_pm:175,ionization_eV:6.0602,en_Pauling:1.28,melting_K:912.5,boiling_K:3505.0,discovery_year:1940},
+      {Z:95,radius_pm:175,ionization_eV:5.9930,en_Pauling:1.13,melting_K:1449.0,boiling_K:2880.0,discovery_year:1944},
+      {Z:96,radius_pm:169,ionization_eV:6.3000,en_Pauling:1.28,melting_K:1618.0,boiling_K:3383.0,discovery_year:1944},
+      {Z:97,radius_pm:168,ionization_eV:6.2300,en_Pauling:1.30,melting_K:1259.0,boiling_K:2900.0,discovery_year:1949},
+      {Z:98,radius_pm:168,ionization_eV:6.2800,en_Pauling:1.30,melting_K:900.0,boiling_K:1743.0,discovery_year:1950},
+      {Z:99,radius_pm:165,ionization_eV:6.4200,en_Pauling:1.30,melting_K:1133.0,boiling_K:null,discovery_year:1952},
+      {Z:100,radius_pm:165,ionization_eV:6.5000,en_Pauling:1.30,melting_K:null,boiling_K:null,discovery_year:1952},
+      {Z:101,radius_pm:165,ionization_eV:6.5800,en_Pauling:1.30,melting_K:null,boiling_K:null,discovery_year:1963},
+      {Z:102,radius_pm:164,ionization_eV:6.6500,en_Pauling:1.30,melting_K:null,boiling_K:null,discovery_year:1963},
+      {Z:103,radius_pm:160,ionization_eV:4.9000,en_Pauling:1.30,melting_K:null,boiling_K:null,discovery_year:1961},
+      {Z:104,radius_pm:160,ionization_eV:6.0000,en_Pauling:1.30,melting_K:null,boiling_K:null,discovery_year:1969},
+      {Z:105,radius_pm:149,ionization_eV:6.8000,en_Pauling:1.30,melting_K:null,boiling_K:null,discovery_year:1967},
+      {Z:106,radius_pm:143,ionization_eV:7.1000,en_Pauling:1.30,melting_K:null,boiling_K:null,discovery_year:1974},
+      {Z:107,radius_pm:141,ionization_eV:7.2000,en_Pauling:1.30,melting_K:null,boiling_K:null,discovery_year:1981},
+      {Z:108,radius_pm:134,ionization_eV:7.4000,en_Pauling:1.30,melting_K:null,boiling_K:null,discovery_year:1984},
+      {Z:109,radius_pm:129,ionization_eV:7.6000,en_Pauling:1.30,melting_K:null,boiling_K:null,discovery_year:1982},
+      {Z:110,radius_pm:128,ionization_eV:8.0000,en_Pauling:1.30,melting_K:null,boiling_K:null,discovery_year:1994},
+      {Z:111,radius_pm:125,ionization_eV:9.3000,en_Pauling:1.30,melting_K:null,boiling_K:null,discovery_year:1995},
+      {Z:112,radius_pm:122,ionization_eV:9.0000,en_Pauling:1.30,melting_K:null,boiling_K:null,discovery_year:1996},
+      {Z:113,radius_pm:136,ionization_eV:5.6000,en_Pauling:1.30,melting_K:null,boiling_K:null,discovery_year:2003},
+      {Z:114,radius_pm:143,ionization_eV:6.5000,en_Pauling:1.30,melting_K:null,boiling_K:null,discovery_year:1998},
+      {Z:115,radius_pm:162,ionization_eV:5.6000,en_Pauling:1.30,melting_K:null,boiling_K:null,discovery_year:2003},
+      {Z:116,radius_pm:175,ionization_eV:6.0000,en_Pauling:1.30,melting_K:null,boiling_K:null,discovery_year:2000},
+      {Z:117,radius_pm:165,ionization_eV:7.1000,en_Pauling:1.30,melting_K:null,boiling_K:null,discovery_year:2010},
+      {Z:118,radius_pm:157,ionization_eV:9.0000,en_Pauling:1.30,melting_K:null,boiling_K:null,discovery_year:2002}
+    ];
+    const MA3 = new Map(moreAttrs3.map(e=>[e.Z,e]));
+    function extraByZ(Z){ return { ...(BD.get(Z)||{}), ...(MD.get(Z)||{}), ...(MA.get(Z)||{}), ...(MA2.get(Z)||{}), ...(MA3.get(Z)||{}) }; }
+    const elements = Array.from({length:118}, (_,i)=>{
+      const Z=i+1; const symbol=SYMBOLS[i]; const name=NAMES[i];
+      const p=POS.get(Z);
+      let period=null, group=null;
+      if(p){period=p.period; group=p.group;} else {
+        if(Z>=58 && Z<=71){period=6; group=null;} else if(Z>=90 && Z<=103){period=7; group=null;} else {period=null; group=null;}
+      }
+      const extra = extraByZ(Z);
+      const isSynthetic = Z>=84;
+      return {
+        Z,symbol,name,period,group,
+        atomic_mass: extra.atomic_mass??null,
+        electron_configuration: extra.electron_configuration??null,
+        radius_pm: extra.radius_pm??null,
+        ionization_eV: extra.ionization_eV??null,
+        en_Pauling: extra.en_Pauling??null,
+        melting_K: extra.melting_K??null,
+        boiling_K: extra.boiling_K??null,
+        discovery_year: extra.discovery_year??null,
+        data_note: isSynthetic? "放射性/人造：部分数据不适用或为理论值" : null,
+        groupBlock: extra.groupBlock??undefined
+      };
+    });
+
+    function toKJmol(eV){return eV==null?null:Math.round(eV*eV_to_kJmol*100)/100}
+    function clamp(v,min,max){return Math.min(max,Math.max(min,v))}
+    function clampRange(a,b){ const min = Math.max(1, Math.min(118, Math.min(a,b))); const max = Math.max(1, Math.min(118, Math.max(a,b))); return {min,max}; }
+    // 数据预处理与统计
+    function preprocessData(key){
+      const r = state.cache.axisRange || {min:1,max:36};
+      const xs = [], ys = [];
+      for(let z=r.min; z<=r.max; z++){
+        const el = elementByZ.get(z); if(!el) continue;
+        const v = key==="radius"? el.radius_pm : key==="ionization"? el.ionization_kJmol : key==="electronegativity"? el.en_Pauling : key==="metallicity"? el.metallicity : key==="nonmetallicity"? el.nonmetallicity : null;
+        if(v==null) continue; xs.push(z); ys.push(v);
+      }
+      if(ys.length<3) return {xs, ys, mean:null, std:null};
+      const mean = ys.reduce((a,b)=>a+b,0)/ys.length;
+      const std = Math.sqrt(ys.reduce((a,b)=>a+(b-mean)*(b-mean),0)/ys.length) || 1;
+      return {xs, ys: ys.map(v=>(v-mean)/std), mean, std};
+    }
+    function smoothSeries(xs, ys, w){
+      const n = ys.length; const k = Math.max(1, Math.floor(w/2));
+      const out = new Array(n);
+      for(let i=0;i<n;i++){
+        let s=0, c=0; for(let j=i-k;j<=i+k;j++){ if(j>=0 && j<n){ s+=ys[j]; c++; } }
+        out[i] = s/(c||1);
+      }
+      return {xs, ys:out};
+    }
+    function linearReg(xs, ys){
+      const n=ys.length; if(n<2) return {slope:0, intercept:0, r2:0, p:1};
+      const xbar = xs.reduce((a,b)=>a+b,0)/n; const ybar = ys.reduce((a,b)=>a+b,0)/n;
+      let Sxx=0, Sxy=0, Syy=0; for(let i=0;i<n;i++){ const dx=xs[i]-xbar; const dy=ys[i]-ybar; Sxx+=dx*dx; Sxy+=dx*dy; Syy+=dy*dy; }
+      const slope = Sxx? (Sxy/Sxx) : 0; const intercept = ybar - slope*xbar;
+      const yhat = xs.map(x=>intercept + slope*x);
+      const SSE = yhat.reduce((a, yh, i)=>{ const e = ys[i]-yh; return a + e*e; }, 0);
+      const r2 = Syy? (1 - SSE/Syy) : 0;
+      const se = Math.sqrt((SSE/Math.max(1,n-2)) / (Sxx||1));
+      const t = se? (slope/se) : 0;
+      const p = 2*(1 - (0.5*(1+erf(Math.abs(t)/Math.SQRT2))));
+      return {slope, intercept, r2, p};
+    }
+    function erf(x){
+      const a1=0.254829592,a2=-0.284496736,a3=1.421413741,a4=-1.453152027,a5=1.061405429,p=0.3275911;
+      const sign = x<0?-1:1; x=Math.abs(x);
+      const t = 1/(1+p*x);
+      const y = 1-((((a5*t+a4)*t+a3)*t+a2)*t+a1)*t*Math.exp(-x*x);
+      return sign*y;
+    }
+    function normalize(v,min,max){if(v==null) return null; if(max===min) return 0.5; return clamp((v-min)/(max-min),0,1)}
+    function hexToRgb(hex){ const h=hex.replace("#",""); if(h.length===3){ const r=parseInt(h[0]+h[0],16), g=parseInt(h[1]+h[1],16), b=parseInt(h[2]+h[2],16); return {r,g,b}; } const n=parseInt(h,16); return {r:(n>>16)&255, g:(n>>8)&255, b:n&255}; }
+    const ColorPresets = {
+      default: [{p:0.0,c:"#2b6cb0"},{p:0.25,c:"#38bdf8"},{p:0.5,c:"#22c55e"},{p:0.75,c:"#f59e0b"},{p:1.0,c:"#ef4444"}],
+      coolwarm: [{p:0.0,c:"#2563eb"},{p:0.5,c:"#ffffff"},{p:1.0,c:"#ef4444"}],
+      rainbow: [{p:0.0,c:"#7c3aed"},{p:0.17,c:"#6366f1"},{p:0.33,c:"#22d3ee"},{p:0.5,c:"#22c55e"},{p:0.66,c:"#eab308"},{p:0.83,c:"#f97316"},{p:1.0,c:"#ef4444"}],
+      fire: [{p:0.0,c:"#0b1220"},{p:0.3,c:"#7f1d1d"},{p:0.6,c:"#f59e0b"},{p:1.0,c:"#fde047"}]
+    };
+    function colorFromNorm(t){ if(t==null) return "#1f2937"; const stops = (state.cache && state.cache.colorStops) || ColorPresets.default; t=Math.max(0,Math.min(1,t)); let i=0; while(i<stops.length-1 && t>stops[i+1].p) i++; const a=stops[i], b=stops[Math.min(i+1,stops.length-1)]; const span=(b.p-a.p)||1; const tt=Math.max(0,Math.min(1,(t-a.p)/span)); const ca=hexToRgb(a.c), cb=hexToRgb(b.c); const r=Math.round(ca.r+(cb.r-ca.r)*tt), g=Math.round(ca.g+(cb.g-ca.g)*tt), bb=Math.round(ca.b+(cb.b-ca.b)*tt); return `rgb(${r},${g},${bb})`; }
+
+    const state = {prop:"radius",trend:"none",speed:1,activeZ:null, cache:{playing:false, playRange:{min:1,max:54}, axisRange:{min:1,max:36}}, series:["radius"], mode:"line", chartHover:null};
+    let elementByZ = null;
+    let elementBySymbol = null;
+    function buildIndex(){ elementByZ = new Map(elements.map(e=>[e.Z,e])); elementBySymbol = new Map(elements.map(e=>[e.symbol,e])); }
+
+    function computeDerived(){
+      elements.forEach(e=>{e.ionization_kJmol = toKJmol(e.ionization_eV)});
+      const rs = elements.map(e=>e.radius_pm).filter(v=>v!=null), rmin=Math.min(...rs), rmax=Math.max(...rs);
+      const iesEV = elements.map(e=>e.ionization_eV).filter(v=>v!=null), ieminEV=Math.min(...iesEV), iemaxEV=Math.max(...iesEV);
+      const ens = elements.map(e=>e.en_Pauling).filter(v=>v!=null), enmin=Math.min(...ens), enmax=Math.max(...ens);
+      elements.forEach(e=>{
+        const nr = normalize(e.radius_pm,rmin,rmax);
+        const nie = normalize(e.ionization_eV,ieminEV,iemaxEV);
+        const nen = normalize(e.en_Pauling,enmin,enmax);
+        const wr=0.4,wie=0.35,wen=0.25;
+        const mi = (nr==null||nie==null||nen==null)?null:(wr*nr + wie*(1-nie) + wen*(1-nen));
+        e.metallicity = mi==null?null:Math.round(mi*100)/100;
+        e.nonmetallicity = e.metallicity==null?null:Math.round((1-e.metallicity)*100)/100;
+      });
+      // 颜色范围（域值）：金属性/非金属性使用数据实际最小/最大值，提升热力图对比度（可按需调整）
+      const mis = elements.map(e=>e.metallicity).filter(v=>v!=null);
+      const nmis = elements.map(e=>e.nonmetallicity).filter(v=>v!=null);
+      const mmin = mis.length? Math.min(...mis) : 0, mmax = mis.length? Math.max(...mis) : 1;
+      const nmin = nmis.length? Math.min(...nmis) : 0, nmax = nmis.length? Math.max(...nmis) : 1;
+      state.cache.extent = {
+        radius:{min:rmin,max:rmax,unit:"pm"},
+        ionization:{min:ieminEV,max:iemaxEV,unit:"eV"},
+        electronegativity:{min:enmin,max:enmax,unit:"Pauling"},
+        metallicity:{min:mmin,max:mmax,unit:"指数"},
+        nonmetallicity:{min:nmin,max:nmax,unit:"指数"}
+      };
+    }
+
+    function validateData(){
+      const required = ["Z","symbol","name","period","group"];
+      let ok = true, warnings=[];
+      for(const e of elements){
+        for(const k of required){if(!(k in e)){ok=false;warnings.push(`${e.symbol||"?"} 缺少字段 ${k}`)}}
+        if(e.radius_pm!=null && (e.radius_pm<=0 || e.radius_pm>400)) warnings.push(`${e.symbol} 半径异常: ${e.radius_pm} pm`);
+        const ie = e.ionization_kJmol;
+        if(ie!=null && (ie<=0 || ie>3000)) warnings.push(`${e.symbol} 电离能异常: ${ie} kJ/mol`);
+        if(e.en_Pauling!=null && (e.en_Pauling<0 || e.en_Pauling>4.5)) warnings.push(`${e.symbol} 电负性异常: ${e.en_Pauling}`);
+      }
+      const msg = document.createElement("div");
+      msg.className="status";
+      msg.textContent = ok? (warnings.length? `数据验证：通过，存在${warnings.length}条警告` : "数据验证：通过") : "数据验证：存在错误";
+      document.querySelector(".toolbar").appendChild(msg);
+      if(warnings.length) console.warn("数据警告", warnings);
+    }
+
+    function cellContent(e){
+      const wrap = document.createElement("div");
+      const num = document.createElement("div"); num.className="num"; num.textContent = e.Z;
+      const sym = document.createElement("div"); sym.className="sym"; sym.textContent = e.symbol;
+      const mass = document.createElement("div"); mass.className="mass"; mass.textContent = (e.atomic_mass!=null? Number(e.atomic_mass).toPrecision(4) : "-");
+      wrap.appendChild(num); wrap.appendChild(sym); wrap.appendChild(mass);
+      return wrap;
+    }
+
+    function gridKey(period,group){return `${period}-${group}`}
+    function renderGrid(){
+      const grid = document.getElementById("grid");
+      grid.innerHTML = "";
+      const cells = new Map();
+      for(let r=1;r<=7;r++){
+        for(let c=1;c<=18;c++){
+          const div = document.createElement("div");
+          div.className = "cell empty";
+          div.dataset.period=r; div.dataset.group=c;
+          grid.appendChild(div);
+          cells.set(gridKey(r,c),div);
+        }
+      }
+      for(const e of elements){
+        if(e.group!=null){
+          const key = gridKey(e.period,e.group);
+          const cell = cells.get(key);
+        if(!cell) continue;
+        cell.classList.remove("empty");
+        cell.innerHTML = "";
+        cell.appendChild(cellContent(e));
+        cell.dataset.symbol=e.symbol;
+        cell.dataset.Z=e.Z;
+        cell.addEventListener("mousemove",ev=>showTooltip(ev,e));
+        cell.addEventListener("mouseleave",hideTooltip);
+        cell.addEventListener("click",()=>showDetail(e));
+        }
+      }
+      renderFooterBlocks();
+      applyColors();
+      applyTrend();
+      renderGroupHeader();
+      renderRowLabels();
+      const wrap = document.querySelector(".gridWrap"); if(wrap){ wrap.addEventListener("scroll", renderRowLabels, {passive:true}); }
+    }
+
+    function renderGroupHeader(){
+      const header = document.getElementById("groupHeader"); if(!header) return; header.innerHTML="";
+      for(let g=1; g<=18;){
+        if(g===8){
+          const div = document.createElement("div"); div.className="gh"; div.style.gridColumn = "8 / span 3"; div.textContent = groupToRoman(8);
+          header.appendChild(div);
+          g = 11;
+        } else {
+          const lab = groupToRoman(g);
+          const div = document.createElement("div"); div.className="gh"; div.textContent = lab; header.appendChild(div);
+          g++;
+        }
+      }
+    }
+    function renderRowLabels(){
+      const wrap = document.querySelector(".gridWrap"); const grid = document.getElementById("grid"); const lab = document.getElementById("rowLabels"); if(!wrap||!grid||!lab) return; lab.innerHTML="";
+      for(let r=1; r<=7; r++){
+        let n = grid.querySelector(`.cell[data-period='${r}'][data-group='1']`);
+        if(!n) n = grid.querySelector(`.cell[data-period='${r}']:not(.empty)`);
+        if(!n) continue;
+        const y = grid.offsetTop + n.offsetTop + (n.offsetHeight/2) - wrap.scrollTop;
+        const div = document.createElement("div"); div.className="rl"; div.style.top = `${y}px`; div.textContent = periodToCN(r);
+        lab.appendChild(div);
+      }
+    }
+
+    function renderFooterBlocks(){
+      const footer = document.getElementById("footer");
+      footer.innerHTML = "";
+      // create placeholder cells
+      const makeCell=(row,col)=>{ const div=document.createElement("div"); div.className="cell empty"; div.style.gridColumn=String(col); div.style.gridRow=String(row); footer.appendChild(div); return div; };
+      // labels
+      const lanLabel=makeCell(1,1); lanLabel.style.gridColumn="1 / span 3"; lanLabel.classList.remove("empty"); lanLabel.innerHTML = `<div class='name'>镧系 (Ce–Lu)</div>`;
+      const actLabel=makeCell(2,1); actLabel.style.gridColumn="1 / span 3"; actLabel.classList.remove("empty"); actLabel.innerHTML = `<div class='name'>锕系 (Th–Lr)</div>`;
+      // lanthanides Ce(58)–Lu(71)
+      for(let Z=58; Z<=71; Z++){
+        const e = elementByZ.get(Z)||elements.find(x=>x.Z===Z);
+        const col = 4 + (Z-58);
+        const cell = makeCell(1,col);
+        cell.classList.remove("empty");
+        cell.appendChild(cellContent(e));
+        cell.dataset.Z=Z; cell.dataset.symbol=e.symbol;
+        cell.addEventListener("mousemove",ev=>showTooltip(ev,e));
+        cell.addEventListener("mouseleave",hideTooltip);
+        cell.addEventListener("click",()=>showDetail(e));
+      }
+      // actinides Th(90)–Lr(103)
+      for(let Z=90; Z<=103; Z++){
+        const e = elementByZ.get(Z)||elements.find(x=>x.Z===Z);
+        const col = 4 + (Z-90);
+        const cell = makeCell(2,col);
+        cell.classList.remove("empty");
+        cell.appendChild(cellContent(e));
+        cell.dataset.Z=Z; cell.dataset.symbol=e.symbol;
+        cell.addEventListener("mousemove",ev=>showTooltip(ev,e));
+        cell.addEventListener("mouseleave",hideTooltip);
+        cell.addEventListener("click",()=>showDetail(e));
+      }
+    }
+
+    function valueOf(e){
+      if(!e) return null;
+      switch(state.prop){
+        case "radius": return e.radius_pm;
+        case "ionization": return e.ionization_eV;
+        case "electronegativity": return (e.group===18? null : e.en_Pauling);
+        case "metallicity": return (e.group===18? null : e.metallicity);
+        case "nonmetallicity": return (e.group===18? null : e.nonmetallicity);
+      }
+    }
+
+    function applyColors(){
+      const ext = state.cache.extent[state.prop];
+      const nodes = document.querySelectorAll(".cell:not(.empty)");
+      nodes.forEach(n=>{
+        const zStr = n.dataset.Z;
+        if(!zStr) return;
+        const Z = Number(zStr);
+        if(!Number.isFinite(Z)) return;
+        const e = elementByZ.get(Z);
+        if(!e) return;
+        const v = valueOf(e);
+        const t = normalize(v, ext.min, ext.max);
+        n.style.background = colorFromNorm(t);
+        const presetSel = document.getElementById("colorPreset");
+        const useBlack = (presetSel && presetSel.value === "coolwarm");
+        if(useBlack){ n.classList.add("darkText"); n.classList.remove("lightText"); }
+        else { n.classList.remove("darkText"); n.classList.add("lightText"); }
+      });
+      const legend = document.getElementById("legendText");
+      const name = {radius:"原子半径(共价半径)",ionization:"第一电离能",electronegativity:"电负性",metallicity:"金属性",nonmetallicity:"非金属性"}[state.prop];
+      const unit = ext.unit;
+      legend.textContent = `${name}（${unit}） 低 ←→ 高 · 范围 ${ext.min.toFixed?ext.min.toFixed(2):ext.min} – ${ext.max.toFixed?ext.max.toFixed(2):ext.max}`;
+    }
+
+    // 同步顶部图例条背景为当前色板分段渐变
+    function updateLegendBarGradient(){
+      const bar = document.querySelector('.legend .bar');
+      if(!bar) return;
+      const stops = (state.cache && state.cache.colorStops) || ColorPresets.default;
+      const parts = stops.map(s=>`${s.c} ${Math.round(s.p*100)}%`).join(', ');
+      bar.style.background = `linear-gradient(90deg, ${parts})`;
+    }
+
+    function applyTrend(){
+      document.querySelectorAll(".cell").forEach(n=>n.classList.remove("trend"));
+      state.cache.trendResult = null;
+      if(state.trend==="none") return;
+      const r = state.cache.axisRange || {min:1,max:36};
+      if(state.trend==="row_dec"){
+        const perRow = [];
+        for(let period=1; period<=7; period++){
+          const xs=[], ys=[];
+          for(let group=1; group<=18; group++){
+            const n = document.querySelector(`.cell[data-period='${period}'][data-group='${group}']`);
+            if(!n || n.classList.contains("empty")) continue;
+            const z = Number(n.dataset.Z); if(!Number.isFinite(z) || z<r.min || z>r.max) continue;
+            const el = elementByZ.get(z); if(!el) continue; const v = valueOf(el); if(v==null) continue; xs.push(group); ys.push(v);
+          }
+          if(xs.length>=3){
+            const sm = smoothSeries(xs, ys, 3);
+            const stat = linearReg(sm.xs, sm.ys);
+            perRow.push({period, slope:stat.slope, r2:stat.r2, p:stat.p});
+            if(stat.slope< -0.02 && stat.p<0.05){
+              for(let group=1; group<=18; group++){
+                const n = document.querySelector(`.cell[data-period='${period}'][data-group='${group}']`);
+                if(n && !n.classList.contains("empty")) n.classList.add("trend");
+              }
+            }
+          }
+        }
+        state.cache.trendResult = {mode:"row_dec", perRow};
+      } else if(state.trend==="col_inc"){
+        const perCol = [];
+        for(let group=1; group<=18; group++){
+          const xs=[], ys=[];
+          for(let period=1; period<=7; period++){
+            const n = document.querySelector(`.cell[data-period='${period}'][data-group='${group}']`);
+            if(!n || n.classList.contains("empty")) continue;
+            const z = Number(n.dataset.Z); if(!Number.isFinite(z) || z<r.min || z>r.max) continue;
+            const el = elementByZ.get(z); if(!el) continue; const v = valueOf(el); if(v==null) continue; xs.push(period); ys.push(v);
+          }
+          if(xs.length>=3){
+            const sm = smoothSeries(xs, ys, 3);
+            const stat = linearReg(sm.xs, sm.ys);
+            perCol.push({group, slope:stat.slope, r2:stat.r2, p:stat.p});
+            if(stat.slope> 0.02 && stat.p<0.05){
+              for(let period=1; period<=7; period++){
+                const n = document.querySelector(`.cell[data-period='${period}'][data-group='${group}']`);
+                if(n && !n.classList.contains("empty")) n.classList.add("trend");
+              }
+            }
+          }
+        }
+        state.cache.trendResult = {mode:"col_inc", perCol};
+      } else if(state.trend==="diag_metal"){
+        const keyM = "metallicity"; const vals = new Map();
+        const maxR=7, maxC=18;
+        for(let period=1; period<=maxR; period++){
+          for(let group=1; group<=maxC; group++){
+            const n = document.querySelector(`.cell[data-period='${period}'][data-group='${group}']`);
+            if(!n || n.classList.contains("empty")) continue;
+            const z = Number(n.dataset.Z); if(!Number.isFinite(z) || z<r.min || z>r.max) continue;
+            const el = elementByZ.get(z); const v = el? el[keyM] : null; if(v==null) continue;
+            vals.set(`${period}-${group}`, v);
+          }
+        }
+        const K = [1,1,1];
+        const hits = [];
+        for(let period=1; period<=maxR-2; period++){
+          for(let group=1; group<=maxC-2; group++){
+            const a = vals.get(`${period}-${group}`);
+            const b = vals.get(`${period+1}-${group+1}`);
+            const c = vals.get(`${period+2}-${group+2}`);
+            if(a==null||b==null||c==null) continue;
+            const s = a*K[0]+b*K[1]+c*K[2];
+            const mu = (a+b+c)/3; const var3 = ((a-mu)**2+(b-mu)**2+(c-mu)**2)/3;
+            const score = var3? (s/(3*Math.sqrt(var3))) : s/3;
+            if(score>0.8){
+              hits.push({period,group,score});
+              for(let k=0;k<3;k++){
+                const n = document.querySelector(`.cell[data-period='${period+k}'][data-group='${group+k}']`);
+                if(n && !n.classList.contains("empty")) n.classList.add("trend");
+              }
+            }
+          }
+        }
+        state.cache.trendResult = {mode:"diag_metal", hits};
+      }
+    }
+
+    function showTooltip(ev,e){
+      const t = document.getElementById("tooltip");
+      const ext = state.cache.extent[state.prop];
+      const v = valueOf(e);
+      const val = v==null?"缺失":`${v.toFixed? v.toFixed(2) : v} ${ext.unit}`;
+      const anomaly = anomalies[e.symbol]? `<span class='badge'>异常</span>`:"";
+      const ec = formatElectronConfig(e.electron_configuration);
+      const ecLine = ec? `<div>电子排布：${ec}</div>` : "";
+      t.innerHTML = `<div><strong>${e.symbol}</strong>（${localName(e)}） #${e.Z}${anomaly}</div>${ecLine}<div>当前属性：${val}</div><div style='margin-top:6px;color:#93a3b3'>${explanation[state.prop]}</div>`;
+      t.style.left = (ev.clientX+12)+"px";
+      t.style.top = (ev.clientY+12)+"px";
+      t.style.display = "block";
+    }
+    function hideTooltip(){document.getElementById("tooltip").style.display="none"}
+
+    function showDetail(e){
+      state.activeZ = e.Z;
+      document.querySelectorAll(".cell").forEach(n=>{
+        if(Number(n.dataset.Z)===e.Z) n.classList.add("active"); else n.classList.remove("active");
+      });
+      const body = document.getElementById("detailBody");
+      const ie_eV = e.ionization_eV, ie_kJ = e.ionization_kJmol, en=e.en_Pauling, r=e.radius_pm;
+      const an = anomalies[e.symbol];
+      body.innerHTML = `
+        <div style='display:flex;align-items:center;gap:8px'>
+          <div style='font-size:1.4rem;font-weight:700'>${e.symbol}</div>
+          <div>#${e.Z}</div>
+        </div>
+        <div class='kv'><div>名称</div><div>${localName(e)}</div></div>
+        <div class='kv'><div>周期/族</div><div>${periodToCN(e.period)} / ${groupToRoman(e.group)}</div></div>
+        <div class='kv'><div>元素分类</div><div>${e.groupBlock||"未知"}</div></div>
+        <div class='kv'><div>原子量</div><div>${e.atomic_mass!=null?Number(e.atomic_mass).toFixed(3):"缺失"}</div></div>
+        <div class='kv'><div>电子排布</div><div class='ec' aria-label='${formatElectronConfigUnicode(e.electron_configuration)||""}'>${formatElectronConfig(e.electron_configuration)||"缺失"}</div></div>
+        <div class='kv'><div>半径类型</div><div>共价半径（单键），单位 pm</div></div>
+        <div class='kv'><div>原子半径</div><div>${r!=null?r.toFixed(2):"缺失"} pm</div></div>
+        <div class='kv'><div>第一电离能</div><div>${ie_eV!=null?ie_eV.toFixed(2):"缺失"} eV</div></div>
+        <div class='kv'><div>折算值</div><div>${ie_kJ!=null?ie_kJ.toFixed(2):"缺失"} kJ/mol</div></div>
+        <div class='kv'><div>电负性(Pauling)</div><div>${en!=null?en.toFixed(2):"缺失"}</div></div>
+        <div class='kv'><div>金属性指数</div><div>${e.metallicity!=null?e.metallicity.toFixed(2):"缺失"}</div></div>
+        <div class='kv'><div>非金属性指数</div><div>${e.nonmetallicity!=null?e.nonmetallicity.toFixed(2):"缺失"}</div></div>
+        ${an?`<div class='kv'><div>异常说明</div><div>${an}</div></div>`:""}
+        <div style='margin-top:8px' class='status'>来源：IUPAC FAIR Cookbook 推荐的 PubChem 元素数据；半径采用共价半径（单键，pm）；电离能显示为 kJ/mol，并保留原始 eV 精度。</div>
+      `;
+    }
+
+    function formatElectronConfig(text){
+      if(!text) return null;
+      return text
+        .replace(/([spdfgh])([0-9]+)/gi, (m,orb,n)=> orb+"<sup>"+n+"</sup>")
+        .replace(/\s+/g," ");
+    }
+    function formatElectronConfigUnicode(text){
+      if(!text) return null;
+      const sup = {"0":"⁰","1":"¹","2":"²","3":"³","4":"⁴","5":"⁵","6":"⁶","7":"⁷","8":"⁸","9":"⁹"};
+      return text.replace(/([spdfgh])([0-9]+)/gi, (m,orb,n)=> orb + n.split("").map(d=>sup[d]||d).join(""));
+    }
+
+function startAnim(){
+  // 开始网格逐帧播放：按当前播放范围筛选可播放的单元格
+  state.cache.gridActive = true;
+  const r = state.cache.playRange || {min:1,max:54};
+  const rangeMin = r.min, rangeMax = r.max;
+  state.cache.gridNodes = Array.from(document.querySelectorAll(".cell:not(.empty)"))
+    .filter(n=>{ const z = Number(n.dataset.Z); return Number.isFinite(z) && z>=rangeMin && z<=rangeMax; })
+    .sort((a,b)=>Number(a.dataset.Z)-Number(b.dataset.Z));
+  // 将起始索引定位到当前激活元素（如存在），否则从头开始
+  const curZ = state.activeZ;
+  const idx = curZ!=null? state.cache.gridNodes.findIndex(n=>Number(n.dataset.Z)===curZ) : -1;
+  state.cache.gridIndex = idx>=0? idx : 0;
+  stepGrid();
+}
+    function stopAnim(){ state.cache.gridActive = false; state.cache.playbackFocus = null; }
+function stepGrid(){
+  const nodes = state.cache.gridNodes || Array.from(document.querySelectorAll(".cell:not(.empty)"));
+  state.cache.gridNodes = nodes;
+  if(nodes.length===0) return;
+  const i = state.cache.gridIndex || 0;
+  document.querySelectorAll(".cell").forEach(n=>n.classList.remove("active"));
+  if(i >= nodes.length){
+    state.cache.gridActive = false;
+    if(state.cache.updateProgress) state.cache.updateProgress(100);
+    const pauseBtn = document.getElementById("pause"); if(pauseBtn) pauseBtn.textContent = "停止";
+    return;
+  }
+  const n = nodes[i];
+  const z = Number(n.dataset.Z);
+  const e = elementByZ.get(z);
+  n.classList.add("active");
+  showDetail(e);
+  // 更新曲线图“播放高亮”焦点为当前播放元素
+  state.cache.playbackFocus = { z };
+  if(state.cache.updateProgress){ const p = ((i+1)/nodes.length)*100; state.cache.updateProgress(p); }
+  state.cache.gridIndex = i + 1;
+  state.cache.lastGridTs = performance.now();
+  drawChart();
+}
+
+    function bindUI(){
+      document.getElementById("prop").addEventListener("change",e=>{state.prop=e.target.value; applyColors();});
+      document.getElementById("trend").addEventListener("change",e=>{state.trend=e.target.value; applyTrend();});
+      const presetSel = document.getElementById("colorPreset");
+      if(presetSel){ presetSel.addEventListener("change",(e)=>{ const name=e.target.value; state.cache.colorStops = ColorPresets[name]||ColorPresets.default; updateLegendBarGradient(); applyColors(); }); }
+      document.getElementById("play").addEventListener("click",()=>{ state.cache.playing=true; startAnim(); Stream.start(); const pauseBtn=document.getElementById("pause"); if(pauseBtn) pauseBtn.textContent="暂停"; const prog=document.getElementById("progress"), progText=document.getElementById("progressText"); if(prog) prog.value=0; if(progText) progText.textContent="0%"; drawChart(); });
+      document.getElementById("pause").addEventListener("click",()=>{ state.cache.playing=false; stopAnim(); Stream.stop(); const pauseBtn=document.getElementById("pause"); if(pauseBtn) pauseBtn.textContent="暂停"; drawChart(); });
+      const speedEl = document.getElementById("speed");
+      const speedLabel = document.getElementById("speedLabel");
+      speedEl.addEventListener("input",e=>{ const hz=Number(e.target.value); state.cache.streamSpeedHz=hz; Stream.setSpeed(hz); if(speedLabel) speedLabel.textContent = `${hz} 次/秒`; updateStatus(`数据流：运行 · ${Stream.fps} FPS · 错误 ${state.cache.errors||0} · 速率 ${Stream.speedHz} 次/秒`); });
+      const prog=document.getElementById("progress"), progText=document.getElementById("progressText");
+      function updateProgress(p){ if(prog) prog.value=p; if(progText) progText.textContent=`${Math.round(p)}%`; }
+      state.cache.updateProgress = updateProgress;
+      // 绑定播放范围控件：更新播放范围并同步网格播放列表
+      const playStart = document.getElementById("playStart");
+      const playEnd = document.getElementById("playEnd");
+      const playLabel = document.getElementById("playRangeLabel");
+      function updatePlayRange(){
+        const r = clampRange(Number(playStart.value), Number(playEnd.value));
+        state.cache.playRange = r;
+        if(playLabel) playLabel.textContent = `Z=${r.min}~${r.max}`;
+        if(state.cache.gridActive){
+          state.cache.gridNodes = Array.from(document.querySelectorAll(".cell:not(.empty)"))
+            .filter(n=>{ const z = Number(n.dataset.Z); return Number.isFinite(z) && z>=r.min && z<=r.max; });
+          const curZ = state.activeZ;
+          const idx = curZ!=null? state.cache.gridNodes.findIndex(n=>Number(n.dataset.Z)===curZ) : -1;
+          state.cache.gridIndex = idx>=0? idx : 0;
+          stepGrid();
+        }
+      }
+      playStart.addEventListener("input", updatePlayRange);
+      playEnd.addEventListener("input", updatePlayRange);
+      // 绑定轴范围控件：更新曲线X轴范围并重绘
+      const axisStart = document.getElementById("axisStart");
+      const axisEnd = document.getElementById("axisEnd");
+      const axisLabelSpan = document.getElementById("axisRangeLabel");
+      function updateAxisRange(){
+        const r = clampRange(Number(axisStart.value), Number(axisEnd.value));
+        state.cache.axisRange = r;
+        if(axisLabelSpan) axisLabelSpan.textContent = `Z=${r.min}~${r.max}`;
+        drawChart();
+      }
+      axisStart.addEventListener("input", updateAxisRange);
+      axisEnd.addEventListener("input", updateAxisRange);
+      const showF = document.getElementById("showFblock");
+      if(showF){
+        const footer = document.getElementById("footer");
+        footer.style.display = showF.checked? "" : "none";
+        showF.addEventListener("change",()=>{ const footer = document.getElementById("footer"); if(footer){ footer.style.display = showF.checked? "" : "none"; } });
+      }
+      const showSub = document.getElementById("showSubgroups");
+      function applySubgroupsVisibility(){
+        const show = !showSub || showSub.checked;
+        document.querySelectorAll('.cell[data-group]').forEach(n=>{
+          const g = Number(n.dataset.group);
+          if(Number.isFinite(g) && g>=3 && g<=12){ if(show) n.classList.remove('hidden'); else n.classList.add('hidden'); }
+        });
+        renderRowLabels();
+      }
+      if(showSub){ applySubgroupsVisibility(); showSub.addEventListener('change', applySubgroupsVisibility); }
+      document.querySelectorAll(".series").forEach(cb=>{
+        cb.addEventListener("change",()=>{
+          const chosen = Array.from(document.querySelectorAll(".series:checked")).map(x=>x.value);
+          state.series = chosen.length?chosen:["radius"]; const hzMap={radius:3, ionization:2, electronegativity:2, metallicity:4, nonmetallicity:4}; const k=state.series[0]; const hz = hzMap[k]||3; state.cache.streamSpeedHz = hz; Stream.setSpeed(hz); if(speedLabel) speedLabel.textContent = `${hz} 次/秒`; if(speedEl) speedEl.value = String(hz); drawChart();
+        });
+      });
+      const chartPlay = document.getElementById("chartPlay");
+      const chartPause = document.getElementById("chartPause");
+      if(chartPlay){ chartPlay.addEventListener("click",()=>{ state.cache.playing=true; startAnim(); Stream.start(); const pauseBtn=document.getElementById("pause"); if(pauseBtn) pauseBtn.textContent="暂停"; const prog=document.getElementById("progress"), progText=document.getElementById("progressText"); if(prog) prog.value=0; if(progText) progText.textContent="0%"; drawChart(); }); }
+      if(chartPause){ chartPause.addEventListener("click",()=>{ state.cache.playing=false; stopAnim(); Stream.stop(); const pauseBtn=document.getElementById("pause"); if(pauseBtn) pauseBtn.textContent="暂停"; drawChart(); }); }
+      document.getElementById("mode").addEventListener("change",e=>{state.mode=e.target.value; drawChart();});
+      function alignToolbars(){
+        const detail = document.getElementById("detail"); if(!detail) return;
+        const singleCol = window.matchMedia("(max-width:1100px)").matches;
+        ["heatToolbar","chartToolbar"].forEach(id=>{
+          const tb = document.getElementById(id); if(!tb) return;
+          if(singleCol){ tb.style.width = "100%"; }
+          else {
+            const rectDetail = detail.getBoundingClientRect(); const rectTb = tb.getBoundingClientRect();
+            const w = Math.max(320, Math.round(rectDetail.right - rectTb.left));
+            tb.style.width = w + "px";
+          }
+        });
+        const chartPanel = document.getElementById("chartPanel");
+        if(chartPanel){
+          if(singleCol){ chartPanel.style.width = "100%"; }
+          else {
+            const rectDetail = detail.getBoundingClientRect(); const rectPanel = chartPanel.getBoundingClientRect();
+            const w = Math.max(320, Math.round(rectDetail.right - rectPanel.left));
+            chartPanel.style.width = w + "px";
+          }
+        }
+      }
+      window.addEventListener("resize",()=>{drawChart(); renderRowLabels(); alignToolbars();});
+      setupVideoControl();
+      alignToolbars();
+      document.getElementById("exportCSV").addEventListener("click",()=>{ try{ exportCSV(); }catch(err){ console.error(err); }});
+      document.getElementById("savePNG").addEventListener("click",()=>{ try{ savePNG(); }catch(err){ console.error(err); }});
+      document.getElementById("saveSVG").addEventListener("click",()=>{ try{ saveSVG(); }catch(err){ console.error(err); }});
+      const expTrend = document.getElementById("exportTrend");
+      if(expTrend) expTrend.addEventListener("click",()=>{ try{ exportTrendReport(); }catch(err){ console.error(err); }});
+      const updateClassBtn = document.getElementById("updateClass");
+      const exportClassCSVBtn = document.getElementById("exportClassCSV");
+      const exportClassReportBtn = document.getElementById("exportClassReport");
+      if(updateClassBtn) updateClassBtn.addEventListener("click",()=>{ try{ updateClassifications(); renderGrid(); }catch(err){ console.error(err); }});
+      if(exportClassCSVBtn) exportClassCSVBtn.addEventListener("click",()=>{ try{ exportClassificationCSV(); }catch(err){ console.error(err); }});
+      if(exportClassReportBtn) exportClassReportBtn.addEventListener("click",()=>{ try{ exportClassificationReport(); }catch(err){ console.error(err); }});
+    }
+
+    function init(){
+      computeDerived();
+      buildIndex();
+      validateData();
+      updateClassifications();
+      renderGrid();
+      // 初始化颜色预设并同步图例条
+      state.cache.colorStops = ColorPresets.default;
+      updateLegendBarGradient();
+      bindUI();
+      drawChart();
+    }
+
+    
+
+    function extentForSeries(key){
+      const ext = state.cache.extent[key];
+      return ext? ext : {min:0,max:1,unit:""};
+    }
+    const palette = { radius: "#60a5fa", ionization: "#f97316", electronegativity: "#22c55e", metallicity: "#a78bfa", nonmetallicity: "#ef4444" };
+    const defaultSpeedBySeries = { radius:3, ionization:2, electronegativity:2, metallicity:4, nonmetallicity:4 };
+    function drawChart(){
+      try{
+      const canvas = document.getElementById("chart");
+      const ctx = canvas.getContext("2d");
+      if(!ctx){ document.getElementById("chartError").style.display = "block"; console.error("Canvas上下文获取失败"); return; }
+
+      const dpr = Math.max(1, Math.floor(window.devicePixelRatio||1));
+      const widthCSS = canvas.parentElement.clientWidth - 40;
+      const heightCSS = 340;
+      canvas.style.width = widthCSS + "px";
+      canvas.style.height = heightCSS + "px";
+      canvas.width = Math.round(widthCSS * dpr);
+      canvas.height = Math.round(heightCSS * dpr);
+      ctx.setTransform(dpr,0,0,dpr,0,0);
+
+      const margin = {l:40, r:40, t:20, b:40};
+      const plotW = widthCSS - margin.l - margin.r;
+      const plotH = heightCSS - margin.t - margin.b;
+      if(!state.cache.playing){
+        ctx.clearRect(0,0,widthCSS,heightCSS);
+        ctx.strokeStyle = "#aaa"; ctx.lineWidth = 1;
+        ctx.beginPath(); ctx.moveTo(margin.l, margin.t); ctx.lineTo(margin.l, margin.t + plotH); ctx.lineTo(margin.l + plotW, margin.t + plotH); ctx.stroke();
+        const axisLabel = document.getElementById("axisLabel"); axisLabel.textContent = "横轴：原子序数 · 纵轴：未播放";
+        const legend = document.getElementById("chartLegendOverlay"); if(legend) legend.innerHTML = "";
+        document.getElementById("chartError").style.display = "none";
+        return;
+      }
+      const pointsRaw = {};
+      const zs = [];
+      const ys = [];
+      const activeSeries = (state.series && state.series.length)? state.series : ["radius"];
+      activeSeries.forEach(key=>{
+        const arr = elements.slice().sort((a,b)=>a.Z-b.Z)
+          .filter(e=> e.group!==18)
+          .map(e=>{
+            const v0 = key==="radius"? e.radius_pm : key==="ionization"? e.ionization_eV : key==="electronegativity"? e.en_Pauling : key==="metallicity"? e.metallicity : key==="nonmetallicity"? e.nonmetallicity : null;
+            const v = (key==="radius" && v0!=null)? (v0/100) : v0;
+            return {z:e.Z, v};
+          }).filter(p=>p.v!=null);
+        pointsRaw[key]=arr;
+        zs.push(...arr.map(p=>p.z));
+        ys.push(...arr.map(p=>p.v));
+      });
+
+      ctx.clearRect(0, 0, widthCSS, heightCSS);
+      const nameMap = {radius:"原子半径(共价半径)",ionization:"第一电离能",electronegativity:"电负性",metallicity:"金属性",nonmetallicity:"非金属性"};
+
+      if(zs.length===0 || ys.length===0){
+        ctx.strokeStyle = "#aaa"; ctx.lineWidth = 1;
+        ctx.beginPath(); ctx.moveTo(margin.l, margin.t); ctx.lineTo(margin.l, margin.t + plotH); ctx.lineTo(margin.l + plotW, margin.t + plotH); ctx.stroke();
+        const legend = document.getElementById("chartLegend"); legend.innerHTML="";
+        const axisLabel = document.getElementById("axisLabel"); axisLabel.textContent = "横轴：原子序数 · 纵轴：无数据";
+        return;
+      }
+
+      const pad = 0.08;
+      const zMin = (state.cache.axisRange?.min ?? 1);
+      const zMax = (state.cache.axisRange?.max ?? 36);
+      const zRange = Math.max(1, zMax - zMin);
+      const xMin = zMin;
+      const xMax = zMax;
+      const x = z => margin.l + (z - xMin) / (xMax - xMin) * plotW;
+
+      const yMinRaw = Math.min(...ys);
+      const yMaxRaw = Math.max(...ys);
+      const yRange = Math.max(1e-9, yMaxRaw - yMinRaw);
+      const yMin = yMinRaw - pad*yRange;
+      const yMax = yMaxRaw + pad*yRange;
+      const y = val => margin.t + (1 - (val - yMin) / (yMax - yMin)) * plotH;
+
+      ctx.strokeStyle = "#aaa"; ctx.lineWidth = 1;
+      ctx.beginPath(); ctx.moveTo(margin.l, margin.t); ctx.lineTo(margin.l, margin.t + plotH); ctx.lineTo(margin.l + plotW, margin.t + plotH); ctx.stroke();
+
+      function niceStep(range){
+        const p = Math.pow(10, Math.floor(Math.log10(range)));
+        const s = range / 6;
+        if(s/p <= 1) return p;
+        if(s/p <= 2) return 2*p;
+        if(s/p <= 5) return 5*p;
+        return 10*p;
+      }
+      const xStep = Math.max(1, Math.round(niceStep(zRange)));
+      const yStep = niceStep(yRange);
+      ctx.fillStyle = "#93a3b3"; ctx.font = "12px system-ui";
+      for(let xv = Math.ceil(xMin/xStep)*xStep; xv <= xMax; xv+=xStep){
+        const px = x(xv);
+        ctx.beginPath(); ctx.moveTo(px, margin.t+plotH); ctx.lineTo(px, margin.t+plotH+4); ctx.stroke();
+        ctx.fillText(String(Math.round(xv)), px-8, margin.t+plotH+18);
+      }
+      for(let yv = Math.ceil(yMin/yStep)*yStep; yv <= yMax; yv+=yStep){
+        const py = y(yv);
+        ctx.beginPath(); ctx.moveTo(margin.l-4, py); ctx.lineTo(margin.l, py); ctx.stroke();
+        ctx.textAlign = "right"; ctx.textBaseline = "middle";
+        ctx.fillText(yv.toFixed(0), margin.l-6, py);
+      }
+
+      const now = performance.now();
+      const prev = state.cache.prevPoints || {};
+      const dur = 250;
+      const t = state.cache.animStart? Math.min(1, (now - state.cache.animStart)/dur) : 1;
+      const pointsBySeries = {};
+      const renderBySeries = {};
+      activeSeries.forEach(key => {
+        const arr = pointsRaw[key]
+          .filter(p=>p.z>=zMin && p.z<=zMax)
+          .map(p=>({x:x(p.z), y:y(p.v), z:p.z, v:p.v}));
+        pointsBySeries[key]=arr;
+        const prevArr = prev[key] || arr;
+        const prevMap = new Map(prevArr.map(pp=>[pp.z, pp]));
+        const renderArr = arr.map(pn=>{
+          const pp = prevMap.get(pn.z) || pn;
+          const ry = pp.y + (pn.y - pp.y) * t;
+          return {x:pn.x, y:ry, z:pn.z, v:pn.v};
+        });
+        renderBySeries[key] = renderArr;
+        if(renderArr.length === 0) return;
+        const color = palette[key] || "#fff";
+        ctx.strokeStyle = color; ctx.lineWidth = 2;
+        if(state.mode === "line"){
+          ctx.beginPath(); ctx.moveTo(renderArr[0].x, renderArr[0].y);
+          for(let i=1;i<renderArr.length;i++){ ctx.lineTo(renderArr[i].x, renderArr[i].y); }
+          ctx.stroke();
+        } else {
+          ctx.fillStyle = color; renderArr.forEach(p=>{ ctx.beginPath(); ctx.arc(p.x,p.y,3.5,0,Math.PI*2); ctx.fill(); });
+        }
+      });
+
+      const hover = state.cache.hoverHighlight;
+      if(hover && renderBySeries[hover.key]){
+        const pt = renderBySeries[hover.key].find(p=>p.z===hover.z);
+        if(pt){
+          ctx.save();
+          ctx.strokeStyle = "#ffffff";
+          ctx.lineWidth = 3;
+          ctx.beginPath(); ctx.arc(pt.x, pt.y, 7, 0, Math.PI*2); ctx.stroke();
+          ctx.restore();
+        }
+      }
+
+      const focus = state.cache.playbackFocus;
+      if(focus){
+        const accent = "#38bdf8";
+        activeSeries.forEach(key=>{
+          const arr = renderBySeries[key];
+          if(!arr) return;
+          const pt = arr.find(p=>p.z===focus.z);
+          if(!pt) return;
+          ctx.save();
+          ctx.strokeStyle = accent;
+          ctx.lineWidth = 3;
+          ctx.beginPath(); ctx.arc(pt.x, pt.y, 9, 0, Math.PI*2); ctx.stroke();
+          ctx.globalAlpha = 0.25;
+          ctx.fillStyle = accent;
+          ctx.beginPath(); ctx.arc(pt.x, pt.y, 4, 0, Math.PI*2); ctx.fill();
+          ctx.restore();
+        });
+      }
+
+      const legend = document.getElementById("chartLegendOverlay");
+      legend.innerHTML = "";
+      activeSeries.forEach(key=>{
+        const div = document.createElement("div");
+        div.style.display = "flex";
+        div.style.alignItems = "center";
+        div.style.marginRight = "10px";
+        const unit = (key==="radius"? "×100 pm" : extentForSeries(key).unit);
+        div.innerHTML = `
+          <span style="display:inline-block;width:16px;height:4px;background:${palette[key]};margin-right:6px"></span>
+          <span>${nameMap[key]}（${unit}）</span>
+        `;
+        legend.appendChild(div);
+      });
+
+      const axisLabel = document.getElementById("axisLabel");
+      if(activeSeries.length===1){
+        const k = activeSeries[0];
+        const unit = (k==="radius"? "×100 pm" : extentForSeries(k).unit);
+        const focus = state.cache.playbackFocus;
+        if(focus){
+          const el = elementByZ.get(focus.z);
+          axisLabel.textContent = `横轴：原子序数(${zMin}~${zMax}) · 纵轴：${nameMap[k]}（${unit}） · 当前播放：${el?`${el.symbol}（${localName(el)}） #${el.Z}`:"-"}`;
+        } else {
+          axisLabel.textContent = `横轴：原子序数(${zMin}~${zMax}) · 纵轴：${nameMap[k]}（${unit}）`;
+        }
+      } else {
+        const focus = state.cache.playbackFocus;
+        if(focus){
+          const el = elementByZ.get(focus.z);
+          axisLabel.textContent = `横轴：原子序数(${zMin}~${zMax}) · 纵轴：多参数（单位见图例） · 当前播放：${el?`${el.symbol}（${localName(el)}） #${el.Z}`:"-"}`;
+        } else {
+          axisLabel.textContent = `横轴：原子序数(${zMin}~${zMax}) · 纵轴：多参数（单位见图例）`;
+        }
+      }
+
+      state.cache.prevPoints = pointsBySeries;
+      document.getElementById("chartError").style.display = "none";
+      bindChartHover(renderBySeries);
+      }catch(err){
+        console.error("绘图错误", err);
+        document.getElementById("chartError").style.display = "block";
+      }
+    }
+    function bindChartHover(pointsBySeries){
+      const canvas = document.getElementById("chart"); const t = document.getElementById("tooltip");
+      function nearest(mx,my){ let best=null, minD=12; Object.keys(pointsBySeries).forEach(key=>{ pointsBySeries[key].forEach(p=>{ const dx=p.x-mx, dy=p.y-my; const d=Math.sqrt(dx*dx+dy*dy); if(d<minD){minD=d; best={key,p};} }); }); return best; }
+      function onMove(ev){ const rect = canvas.getBoundingClientRect(); const mx = ev.clientX - rect.left, my = ev.clientY - rect.top; const hit = nearest(mx,my); if(!hit){ t.style.display="none"; state.cache.hoverHighlight=null; drawChart(); return;} const z = hit.p.z; const el = elementByZ.get(z); const lines = []; const activeSeries = (state.series && state.series.length)? state.series : ["radius"]; activeSeries.forEach(key=>{ const val = key==="radius"? el.radius_pm : key==="ionization"? el.ionization_eV : key==="electronegativity"? el.en_Pauling : key==="metallicity"? el.metallicity : key==="nonmetallicity"? el.nonmetallicity : null; const labelMap = {radius:"半径",ionization:"第一电离能",electronegativity:"电负性",metallicity:"金属性",nonmetallicity:"非金属性"}; if(val!=null){ const unit = key==="ionization"? "eV" : extentForSeries(key).unit; lines.push(`${labelMap[key]}：${val.toFixed(2)} ${unit}`); } }); t.innerHTML = `<div><strong>${el.symbol}</strong>（${el.name}） #${el.Z}</div><div>${lines.join("<br>")}</div>`; t.style.left = (ev.clientX+12)+"px"; t.style.top = (ev.clientY+12)+"px"; t.style.display = "block"; state.cache.hoverHighlight = { key: hit.key, z }; drawChart(); }
+      function onLeave(){ t.style.display="none"; state.cache.hoverHighlight=null; drawChart(); }
+      canvas.onmousemove = onMove; canvas.onmouseleave = onLeave;
+    }
+
+    function setupVideoControl(){
+      const video = document.querySelector("video");
+      if(!video) return;
+      video.loop = false;
+      video.addEventListener("ended",()=>{ stopAnim(); Stream.stop(); if(state.cache.updateProgress) state.cache.updateProgress(100); const pauseBtn=document.getElementById("pause"); if(pauseBtn) pauseBtn.textContent = "停止"; updateStatus("播放：完成"); });
+      video.addEventListener("timeupdate",()=>{ if(video.duration && state.cache.updateProgress){ const p = Math.min(100, (video.currentTime/video.duration)*100); state.cache.updateProgress(p); } });
+    }
+
+    function exportCSV(){
+      const activeSeries = (state.series && state.series.length)? state.series : ["radius"]; const nameMap = {radius:"半径(pm)",ionization:"电离能(kJ/mol)",electronegativity:"电负性",metallicity:"金属性",nonmetallicity:"非金属性"};
+      const header = ["Z","symbol","name",...activeSeries.map(k=>nameMap[k])];
+      const rows = [];
+      for(let z=1;z<=36;z++){
+        const el = elementByZ.get(z); if(!el) continue;
+        const vals = activeSeries.map(k=>{
+          if(k==="radius") return el.radius_pm??""; if(k==="ionization") return el.ionization_eV??""; if(k==="electronegativity") return el.en_Pauling??""; if(k==="metallicity") return el.metallicity??""; if(k==="nonmetallicity") return el.nonmetallicity??"";
+        });
+        rows.push([z, el.symbol, el.name, ...vals]);
+      }
+      const csv = [header.join(","), ...rows.map(r=>r.join(","))].join("\n");
+      const blob = new Blob([csv], {type:"text/csv;charset=utf-8"});
+      const a = document.createElement("a"); a.href = URL.createObjectURL(blob); a.download = "元素数据_1-36.csv"; a.click(); URL.revokeObjectURL(a.href);
+    }
+    function savePNG(){ const canvas=document.getElementById("chart"); const a=document.createElement("a"); a.href=canvas.toDataURL("image/png"); a.download="曲线图_1-36.png"; a.click(); }
+    function saveSVG(){
+      const canvas=document.getElementById("chart"); const W=canvas.width, H=canvas.height; const activeSeries=(state.series&&state.series.length)?state.series:["radius"]; const palette={ radius: "#60a5fa", ionization: "#f97316", electronegativity: "#22c55e", metallicity: "#a78bfa", nonmetallicity: "#ef4444" };
+      const margin = {l:40,r:40,t:20,b:40}; const plotW=W-margin.l-margin.r; const plotH=H-margin.t-margin.b; const xMin=1,xMax=36;
+      function extentForSeriesLocal(key){ const ext=state.cache.extent[key]; return ext?ext:{min:0,max:1,unit:""}; }
+      function yScale(val,key){ const ext=extentForSeriesLocal(key); const v = (key==="radius" && val!=null)? (val/100) : val; const min = (key==="radius"? ext.min/100 : ext.min); const max = (key==="radius"? ext.max/100 : ext.max); const t=(v-min)/(max-min); if(!isFinite(t)) return null; return margin.t + (1-Math.max(0,Math.min(1,t))) * plotH; }
+      const x = z => margin.l + (z - xMin)/(xMax - xMin) * plotW;
+      const seriesPaths = activeSeries.map(key=>{
+        const pts = []; for(let z=1; z<=36; z++){ const el = elementByZ.get(z); if(!el) continue; const v0 = key==="radius"? el.radius_pm : key==="ionization"? el.ionization_eV : key==="electronegativity"? el.en_Pauling : key==="metallicity"? el.metallicity : key==="nonmetallicity"? el.nonmetallicity : null; if(v0==null) continue; const xs=x(z), ys=yScale(v0,key); if(ys==null) continue; pts.push(`${xs},${ys}`); }
+        const color = palette[key]; return `<polyline fill="none" stroke="${color}" stroke-width="2" points="${pts.join(" ")}" />`;
+      }).join("");
+      const svg = `<?xml version="1.0" encoding="UTF-8"?><svg xmlns="http://www.w3.org/2000/svg" width="${W}" height="${H}"><rect x="0" y="0" width="${W}" height="${H}" fill="#0b1220"/><line x1="${margin.l}" y1="${margin.t}" x2="${margin.l}" y2="${margin.t+plotH}" stroke="#aaa"/><line x1="${margin.l}" y1="${margin.t+plotH}" x2="${margin.l+plotW}" y2="${margin.t+plotH}" stroke="#aaa"/>${seriesPaths}</svg>`;
+      const blob = new Blob([svg], {type:"image/svg+xml"}); const a=document.createElement("a"); a.href=URL.createObjectURL(blob); a.download="曲线图_1-36.svg"; a.click(); URL.revokeObjectURL(a.href);
+    }
+
+    function exportTrendReport(){
+      const r = state.cache.axisRange || {min:1,max:36};
+      const res = state.cache.trendResult;
+      let text = `趋势分析报告\n\n范围：Z=${r.min}~${r.max}\n属性：${{radius:"原子半径",ionization:"第一电离能",electronegativity:"电负性",metallicity:"金属性",nonmetallicity:"非金属性"}[state.prop]}\n模式：${{row_dec:"横向递减",col_inc:"纵向递增",diag_metal:"金属性对角线"}[state.trend]||"无"}\n`;
+      if(!res){ text += "\n未选择趋势或无可分析数据"; }
+      else if(res.mode==="row_dec"){
+        text += "\n按周期行线性回归（group→值）：\n";
+        res.perRow.forEach(it=>{ text += `周期 ${it.period}：斜率 ${it.slope.toFixed(3)}，R² ${it.r2.toFixed(3)}，p=${it.p.toFixed(3)}\n`; });
+      } else if(res.mode==="col_inc"){
+        text += "\n按族列线性回归（period→值）：\n";
+        res.perCol.forEach(it=>{ text += `族 ${it.group}：斜率 ${it.slope.toFixed(3)}，R² ${it.r2.toFixed(3)}，p=${it.p.toFixed(3)}\n`; });
+      } else if(res.mode==="diag_metal"){
+        text += "\n对角线相关路径（长度3片段，score>0.8）：\n";
+        res.hits.forEach(it=>{ text += `起点 period=${it.period}, group=${it.group}，score=${it.score.toFixed(2)}\n`; });
+      }
+      text += "\n说明：斜率为标准化后线性趋势，p值为近似正态检验，仅供教学演示参考。";
+      const blob = new Blob([text], {type:"text/plain;charset=utf-8"});
+      const a = document.createElement("a"); a.href = URL.createObjectURL(blob); a.download = "趋势分析报告.txt"; a.click(); URL.revokeObjectURL(a.href);
+    }
+
+    function classifyElement(e){
+      const z=e.Z, g=e.group;
+      // 精细分类：系列/族优先
+      if(z>=58 && z<=71) return "镧系";
+      if(z>=90 && z<=103) return "锕系";
+      if(g===18) return "稀有气体";
+      if(g===17) return "卤素";
+      if(g===1) return z===1? "非金属" : "碱金属";
+      if(g===2) return "碱土金属";
+      if(g>=3 && g<=12) return "过渡金属";
+      // 细化：类金属与其它非金属
+      const metalloids = new Set([5,14,32,33,51,52,84]); // B, Si, Ge, As, Sb, Te, Po
+      const otherNonmetals = new Set([1,6,7,8,15,16,34]); // H, C, N, O, P, S, Se
+      if(metalloids.has(z)) return "类金属";
+      if(otherNonmetals.has(z)) return "非金属";
+      // 后过渡金属（贫金属）
+      const postTrans = new Set([13,31,49,50,81,82,83]); // Al, Ga, In, Sn, Tl, Pb, Bi
+      if(postTrans.has(z)) return "金属";
+      // 超重元素（104–118）统一归为超重金属
+      if(z>=104 && z<=118) return "超重金属";
+      // 默认：金属
+      return "金属";
+    }
+    function updateClassifications(){
+      const changes=[];
+      elements.forEach(e=>{
+        const cur=e.groupBlock;
+        // 规范化：将“后过渡金属”统一替换为“金属”
+        if(cur==="后过渡金属"){ e.groupBlock="金属"; changes.push({Z:e.Z,symbol:e.symbol,name:localName(e),from:"后过渡金属",to:"金属",reason:"normalize"}); }
+        if(!e.groupBlock || e.groupBlock==="未知"){ const cls=classifyElement(e); e.groupBlock=cls; changes.push({Z:e.Z,symbol:e.symbol,name:localName(e),from:cur||"未知",to:cls,reason:`group=${e.group},Z=${e.Z}`}); }
+      });
+      state.cache.classificationChanges = changes;
+    }
+    function exportClassificationCSV(){
+      const rows=[["Z","symbol","name","group","period","classification"]];
+      elements.forEach(e=>{ rows.push([e.Z,e.symbol,localName(e),e.group??"",e.period??"", e.groupBlock??""]); });
+      const csv = rows.map(r=>r.join(",")).join("\n");
+      const blob = new Blob([csv], {type:"text/csv;charset=utf-8"});
+      const a=document.createElement("a"); a.href=URL.createObjectURL(blob); a.download="元素分类对照表.csv"; a.click(); URL.revokeObjectURL(a.href);
+    }
+    function exportClassificationReport(){
+      const changes = state.cache.classificationChanges||[];
+      const counts = new Map(); elements.forEach(e=>{ const k=e.groupBlock||"未知"; counts.set(k,(counts.get(k)||0)+1); });
+      let text = "元素分类报告\n\n分类统计:\n";
+      Array.from(counts.entries()).sort((a,b)=>a[0].localeCompare(b[0],'zh-CN')).forEach(([k,v])=>{ text += `${k}: ${v}\n`; });
+      text += "\n修改记录:\n";
+      changes.forEach(c=>{ text += `#${c.Z} ${c.symbol}（${c.name}）: ${c.from} → ${c.to} · 依据 ${c.reason}\n`; });
+      const blob = new Blob([text], {type:"text/plain;charset=utf-8"});
+      const a=document.createElement("a"); a.href=URL.createObjectURL(blob); a.download="分类修改报告.txt"; a.click(); URL.revokeObjectURL(a.href);
+    }
+
+    function updateStatus(text){ const s=document.getElementById("updateStatus"); if(s) s.textContent = text; }
+    function ingestDataPoint(d){
+      try{
+        if(typeof d.Z!=="number") throw new Error("缺少原子序数 Z");
+        const el = elementByZ.get(d.Z); if(!el) throw new Error(`找不到元素 Z=${d.Z}`);
+        if("radius_pm" in d){ if(typeof d.radius_pm!=="number") throw new Error("半径必须为数值"); el.radius_pm = d.radius_pm; }
+        if("ionization_eV" in d){ if(typeof d.ionization_eV!=="number") throw new Error("电离能(eV)必须为数值"); el.ionization_eV = d.ionization_eV; }
+        if("en_Pauling" in d){ const v=d.en_Pauling; if(v!=null && (v<0 || v>4.5)) throw new Error("电负性范围不合法"); el.en_Pauling = v; }
+        computeDerived();
+        state.cache.animStart = performance.now();
+        drawChart();
+      }catch(err){ state.cache.errors = (state.cache.errors||0)+1; updateStatus(`数据流：运行 · 60 FPS · 错误 ${state.cache.errors}`); console.error("数据更新错误", err); }
+    }
+
+    const Stream = {
+      fps:60, running:false, speedHz:3, lastTs:0, acc:0,
+      setSpeed(hz){ this.speedHz = Math.max(1, Math.min(30, Math.floor(hz))); },
+      start(){ this.running=true; state.cache.playing=true; this.lastTs=0; this.acc=0; this.loop(); updateStatus(`数据流：运行 · ${this.fps} FPS · 错误 ${state.cache.errors||0} · 速率 ${this.speedHz} 次/秒`); },
+      stop(){ this.running=false; state.cache.playing=false; updateStatus(`数据流：停止 · 错误 ${state.cache.errors||0}`); },
+      loop(){ if(!this.running) return; requestAnimationFrame((ts)=>{ if(!this.running) return; if(!this.lastTs) this.lastTs=ts; const dt=ts-this.lastTs; this.lastTs=ts; this.acc+=dt; const interval=1000/this.speedHz; let ticks=0; while(this.acc>=interval && ticks<5){ try{ this.tick(ts); } catch(err){ state.cache.errors=(state.cache.errors||0)+1; console.error(err); } this.acc-=interval; ticks++; } drawChart(); this.loop(); }); },
+      tick(ts){
+        const keys = state.series.length? state.series : ["radius"];
+        const key = keys[Math.floor(Math.random()*keys.length)];
+        const idx = Math.floor(Math.random()*elements.length);
+        const el = elements[idx]; if(!el) return;
+        const ranges = { radius_pm:[40,200], ionization_eV:[4,25], en_Pauling:[0.5,4.2] };
+        if(key==="radius"){ const jitter=2; const base = clamp(el.radius_pm||100, ...ranges.radius_pm); const nv = clamp(base + (Math.random()*2-1)*jitter, ...ranges.radius_pm); ingestDataPoint({Z:el.Z, radius_pm: Number(nv.toFixed(4))}); }
+        else if(key==="ionization"){ const jitterEV=0.05; const baseEV = clamp(el.ionization_eV||10, ...ranges.ionization_eV); const nextEV = clamp(baseEV + (Math.random()*2-1)*jitterEV, ...ranges.ionization_eV); ingestDataPoint({Z:el.Z, ionization_eV: Number(nextEV.toFixed(4))}); }
+        else if(key==="electronegativity"){ const jitter=0.03; const base = clamp(el.en_Pauling||2, ...ranges.en_Pauling); const nv = clamp(base + (Math.random()*2-1)*jitter, ...ranges.en_Pauling); ingestDataPoint({Z:el.Z, en_Pauling: Number(nv.toFixed(4))}); }
+        state.cache.lastTickTs = ts;
+        if(state.cache.gridActive) stepGrid();
+      }
+    };
+    
+    init();
+  </script>
+</body>
+</html>
