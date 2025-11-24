@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>高中化学周期性数据可视化</title>
+  <title>元素周期律数据可视化by实验中学</title>
   <style>
     :root {
       --bg:#0f172a;--panel:#111827;--border:#1f2937;--text:#e5e7eb;--muted:#93a3b3;
@@ -18,6 +18,7 @@
     .legend{display:flex;align-items:center;gap:12px;margin-left:auto}
     .legend .bar{width:160px;height:12px;border-radius:8px;background:linear-gradient(90deg,#2b6cb0 0%, #38bdf8 25%, #22c55e 50%, #f59e0b 75%, #ef4444 100%);border:1px solid var(--border)}
     .content{display:grid;grid-template-columns:1fr 320px;gap:12px}
+    .page-title{margin:0 0 12px 0;background:var(--panel);border:1px solid var(--border);border-radius:12px;padding:12px;font-size:1.6rem;line-height:1.4;color:var(--text);overflow-wrap:break-word;word-break:break-word}
     .gridWrap{position:relative;max-height:70vh;overflow:auto;scroll-behavior:smooth;padding-left:28px}
 .ptable{background:var(--panel);border:1px solid var(--border);border-radius:12px;padding:12px}
 .ptable{position:relative}
@@ -61,6 +62,7 @@
 </head>
 <body>
   <div class="app">
+    <h1 class="page-title">元素周期律数据可视化by实验中学</h1>
     <div class="toolbar" id="heatToolbar">
       <div class="group">
         <label for="prop">属性</label>
