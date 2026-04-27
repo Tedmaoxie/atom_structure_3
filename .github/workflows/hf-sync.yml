@@ -1,0 +1,21 @@
+name: Sync to Hugging Face space
+on:
+  push:
+    branches: [main]
+  # 允许在 GitHub Actions 页面手动触发
+  workflow_dispatch:
+
+jobs:
+  sync-to-hub:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          lfs: true
+      - name: Push to hub
+        env:
+          HF_TOKEN: ${{ secrets.HF_TOKEN }}
+        run: |
+          # 请将下方链接中的 Tedmaoxie/atom_structure_3 替换为你在 Hugging Face 上的 用户名/Space名称
+          git push --force https://Tedmaoxie:$HF_TOKEN@huggingface.co/spaces/Tedmaoxie/atom_structure_3 main
